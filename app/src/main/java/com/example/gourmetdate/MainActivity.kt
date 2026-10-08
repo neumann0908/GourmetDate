@@ -29,11 +29,16 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun IngredientesScreen() {
-    // Variables para guardar lo que escribas en pantalla
+    // Variables de entrada
     var nombre by remember { mutableStateOf("") }
     var costo by remember { mutableStateOf("") }
     var pesoBruto by remember { mutableStateOf("") }
     var pesoNeto by remember { mutableStateOf("") }
+
+    // Nuevas variables para mostrar los resultados en pantalla
+    var rendimientoTexto by remember { mutableStateOf("") }
+    var costoRealTexto by remember { mutableStateOf("") }
+    var mensajeError by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -87,10 +92,53 @@ fun IngredientesScreen() {
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
-            onClick = { /* Aquí conectaremos la fórmula de merma luego */ },
+            onClick = { 
+                // Lógica de cálculo al presionar el botón
+                val c = costo.toDoubleOrNull() ?: 0.0
+                val pb = pesoBruto.toDoubleOrNull() ?: 0.0
+                val pn = pesoNeto.toDoubleOrNull() ?: 0.0
+
+                if (pb > 0 && pn > 0 && pn <= pb) {
+                    val porcentajeRendimiento = (pn / pb) * 100
+                    val costoVerdadero = c / pn
+                    
+                    rendimientoTexto = String.format("%.2f %%", porcentajeRendimiento)
+                    costoRealTexto = String.format("$ %.2f por unidad utilizable", costoVerdadero)
+                    mensajeError = ""
+                } else {
+                    mensajeError = "Revisa los datos: El peso neto no puede ser mayor al bruto, y deben ser mayores a 0."
+                    rendimientoTexto = ""
+                    costoRealTexto = ""
+                }
+            },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Calcular Rendimiento")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Mostrar un mensaje de error si los datos están mal ingresados
+        if (mensajeError.isNotEmpty()) {
+            Text(text = mensajeError, color = MaterialTheme.colorScheme.error)
+        }
+
+        // Mostrar la tarjeta de resultados si el cálculo fue exitoso
+        if (rendimientoTexto.isNotEmpty() && costoRealTexto.isNotEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Resultados para: ${if (nombre.isEmpty()) "Ingrediente" else nombre}", 
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = "Rendimiento: $rendimientoTexto")
+                    Text(text = "Costo Real: $costoRealTexto", color = MaterialTheme.colorScheme.primary)
+                }
+            }
         }
     }
 }
