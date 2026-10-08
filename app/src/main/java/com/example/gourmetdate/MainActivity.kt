@@ -24,6 +24,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
 
+// Enum para controlar la navegación entre secciones
+enum class Seccion(val titulo: String, val ruta: String, val icono: String) {
+    ESCRITORIO("Escritorio Principal", "/C/GOURMETDATE/DESKTOP/", "🖥️"),
+    INGREDIENTES("Catálogo de Ingredientes", "/C/GOURMETDATE/INGREDIENTES/", "📁"),
+    RECETAS("Gestión de Recetas", "/C/GOURMETDATE/RECETAS/", "📄"),
+    PROVEEDORES("Directorio de Proveedores", "/C/GOURMETDATE/PROVEEDORES/", "📦"),
+    ORDENES("Órdenes de Compra", "/C/GOURMETDATE/ORDENES/", "📋"),
+    MERMAS("Ingredientes & Mermas", "/C/GOURMETDATE/MERMAS/", "🧪")
+}
+
 // Modelo de datos para ingredientes
 data class Ingrediente(
     val id: String = java.util.UUID.randomUUID().toString(),
@@ -44,7 +54,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = Color(0xFFE5DFEE) // Fondo lavanda retro
+                    color = Color(0xFFE5DFEE)
                 ) {
                     RetroMermasApp()
                 }
@@ -55,12 +65,15 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RetroMermasApp() {
+    // Estado de la sección actual seleccionada
+    var seccionActual by remember { mutableStateOf(Seccion.MERMAS) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFFE5DFEE))
     ) {
-        // --- 1. Ruta / Header Superior ---
+        // --- 1. Ruta / Header Superior Dinámico ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -77,7 +90,7 @@ fun RetroMermasApp() {
                 color = Color.Black
             )
             Text(
-                text = "   /C/GOURMETDATE/MERMAS/",
+                text = "   ${seccionActual.ruta}",
                 fontSize = 11.sp,
                 fontFamily = FontFamily.Monospace,
                 color = Color(0xFF555555)
@@ -96,7 +109,7 @@ fun RetroMermasApp() {
                     .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(10.dp))
                     .border(2.dp, Color.Black, shape = RoundedCornerShape(10.dp))
             ) {
-                // Barra de título de la ventana estilo OS
+                // Barra de título dinámico
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -109,7 +122,7 @@ fun RetroMermasApp() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Ingredientes & Mermas",
+                        text = seccionActual.titulo,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp
@@ -133,30 +146,68 @@ fun RetroMermasApp() {
                     }
                 }
 
-                // Contenido del Formulario y Lista
-                IngredientesFormularioRetro()
+                // Selector de vistas según la sección seleccionada
+                when (seccionActual) {
+                    Seccion.MERMAS -> IngredientesFormularioRetro()
+                    else -> SeccionEnConstruccion(seccion = seccionActual)
+                }
             }
         }
 
-        // --- 3. Dock Inferior / Taskbar ---
-        RetroBottomDock()
+        // --- 3. Dock Inferior / Taskbar Interactivo ---
+        RetroBottomDock(
+            seccionActual = seccionActual,
+            onSeccionSeleccionada = { seccionActual = it }
+        )
+    }
+}
+
+@Composable
+fun SeccionEnConstruccion(seccion: Seccion) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(text = seccion.icono, fontSize = 48.sp)
+            Text(
+                text = seccion.titulo,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black
+            )
+            Box(
+                modifier = Modifier
+                    .background(Color(0xFFFEF3C7), shape = RoundedCornerShape(6.dp))
+                    .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = "⚙️ Módulo en desarrollo. Usa la barra inferior para volver a MERMAS.",
+                    fontSize = 12.sp,
+                    color = Color.DarkGray
+                )
+            }
+        }
     }
 }
 
 @Composable
 fun IngredientesFormularioRetro() {
-    // Estado de entradas
     var nombre by remember { mutableStateOf("") }
     var costo by remember { mutableStateOf("") }
     var pesoBruto by remember { mutableStateOf("") }
     var pesoNeto by remember { mutableStateOf("") }
 
-    // Selector de unidades
     val unidades = listOf("kg", "g", "lb", "oz", "ml")
     var unidadSeleccionada by remember { mutableStateOf("kg") }
     var menuUnidadesExpandido by remember { mutableStateOf(false) }
 
-    // Resultados
     var rendimientoCalculado by remember { mutableStateOf<Double?>(null) }
     var costoRealCalculado by remember { mutableStateOf<Double?>(null) }
     var analisisTextoCalculado by remember { mutableStateOf("") }
@@ -187,7 +238,6 @@ fun IngredientesFormularioRetro() {
             )
         }
 
-        // --- Tarjeta de Métricas Globales ---
         if (listaIngredientes.isNotEmpty()) {
             item {
                 val promedioRendimiento = listaIngredientes.map { it.rendimiento }.average()
@@ -223,7 +273,6 @@ fun IngredientesFormularioRetro() {
             }
         }
 
-        // --- Campo 1: Nombre ---
         item {
             RetroInputField(
                 label = "Nombre del ingrediente (ej. Aguacate)",
@@ -233,7 +282,6 @@ fun IngredientesFormularioRetro() {
             )
         }
 
-        // --- Campo 2: Costo Total ---
         item {
             RetroInputField(
                 label = "Costo total de compra ($)",
@@ -245,7 +293,6 @@ fun IngredientesFormularioRetro() {
             )
         }
 
-        // --- Campo 3: Peso Bruto + Unidad ---
         item {
             Column {
                 Text(
@@ -292,7 +339,6 @@ fun IngredientesFormularioRetro() {
             }
         }
 
-        // --- Campo 4: Peso Neto ---
         item {
             RetroInputField(
                 label = "Peso Neto (solo lo utilizable)",
@@ -303,7 +349,6 @@ fun IngredientesFormularioRetro() {
             )
         }
 
-        // --- Botón Principal Morado ---
         item {
             RetroButton(
                 text = "Calcular Rendimiento",
@@ -346,7 +391,6 @@ fun IngredientesFormularioRetro() {
             }
         }
 
-        // --- Resultado y Botón Guardar ---
         if (rendimientoCalculado != null && costoRealCalculado != null) {
             item {
                 Box(
@@ -418,7 +462,6 @@ fun IngredientesFormularioRetro() {
             }
         }
 
-        // --- Lista Registrada ---
         if (listaIngredientes.isNotEmpty()) {
             item {
                 Box(
@@ -454,217 +497,4 @@ fun IngredientesFormularioRetro() {
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(ing.nombre, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("Rendimiento: ${String.format(Locale.US, "%.1f%%", ing.rendimiento)}", fontSize = 12.sp)
-                            Text(
-                                "Costo Real: $${String.format(Locale.US, "%.2f", ing.costoReal)} / ${ing.unidad}",
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF6B21A8),
-                                fontSize = 12.sp
-                            )
-                        }
-
-                        IconButton(onClick = { listaIngredientes.remove(ing) }) {
-                            Text("🗑️", fontSize = 16.sp)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun RetroInputField(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholderText: String,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    onFocusLost: (() -> Unit)? = null
-) {
-    Column {
-        Text(
-            text = label,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.Black,
-            modifier = Modifier.padding(bottom = 4.dp)
-        )
-        RetroTextFieldRaw(
-            value = value,
-            onValueChange = onValueChange,
-            placeholderText = placeholderText,
-            keyboardType = keyboardType,
-            onFocusLost = onFocusLost
-        )
-    }
-}
-
-@Composable
-fun RetroTextFieldRaw(
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholderText: String,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    onFocusLost: (() -> Unit)? = null
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.Black, shape = RoundedCornerShape(6.dp))
-    ) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            placeholder = { Text(placeholderText, color = Color.Gray, fontSize = 13.sp) },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Color.Black,
-                unfocusedBorderColor = Color.Black
-            ),
-            shape = RoundedCornerShape(6.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .offset(x = (-2).dp, y = (-2).dp)
-                .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(6.dp))
-                .onFocusChanged { focusState ->
-                    if (!focusState.isFocused && onFocusLost != null) {
-                        onFocusLost()
-                    }
-                }
-        )
-    }
-}
-
-@Composable
-fun RetroButton(
-    text: String,
-    onClick: () -> Unit,
-    backgroundColor: Color = Color(0xFF6B21A8)
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .background(Color.Black, shape = RoundedCornerShape(6.dp))
-            .clickable(onClick = onClick)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .offset(x = (-3).dp, y = (-3).dp)
-                .background(backgroundColor, shape = RoundedCornerShape(6.dp))
-                .border(2.dp, Color.Black, shape = RoundedCornerShape(6.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = text,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp
-            )
-        }
-    }
-}
-
-@Composable
-fun RetroButtonSmall(
-    text: String,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .background(Color.Black, shape = RoundedCornerShape(6.dp))
-            .clickable(onClick = onClick)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .offset(x = (-2).dp, y = (-2).dp)
-                .background(Color(0xFFE5E7EB), shape = RoundedCornerShape(6.dp))
-                .border(1.5.dp, Color.Black, shape = RoundedCornerShape(6.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = text,
-                color = Color.Black,
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp
-            )
-        }
-    }
-}
-
-@Composable
-fun RetroBottomDock() {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color(0xFFE5DFEE))
-                .border(1.dp, Color.Black)
-                .padding(vertical = 4.dp, horizontal = 2.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            DockItem(icon = "🖥️", label = "ESCRITORIO", isSelected = false)
-            DockItem(icon = "📁", label = "INGREDIEN...", isSelected = false)
-            DockItem(icon = "📄", label = "RECETAS", isSelected = false)
-            DockItem(icon = "📦", label = "PROVEEDOR...", isSelected = false)
-            DockItem(icon = "📋", label = "ÓRDENES", isSelected = false)
-            DockItem(icon = "🧪", label = "MERMAS", isSelected = true)
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color(0xFFFFD000))
-                .border(1.dp, Color.Black)
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "GOURMET STATUS",
-                fontWeight = FontWeight.Bold,
-                fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
-                color = Color.Black
-            )
-            Text(
-                text = "  |  SECCIÓN: MERMAS",
-                fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
-                color = Color.Black
-            )
-        }
-    }
-}
-
-@Composable
-fun DockItem(icon: String, label: String, isSelected: Boolean) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .background(
-                color = if (isSelected) Color(0xFFFFE600) else Color.Transparent,
-                shape = RoundedCornerShape(4.dp)
-            )
-            .border(
-                width = if (isSelected) 1.dp else 0.dp,
-                color = if (isSelected) Color.Black else Color.Transparent,
-                shape = RoundedCornerShape(4.dp)
-            )
-            .padding(horizontal = 3.dp, vertical = 2.dp)
-    ) {
-        Text(text = icon, fontSize = 14.sp)
-        Text(
-            text = label,
-            fontSize = 8.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-            color = Color.Black
-        )
-    }
-}
+                            Text("Rendimiento: 
