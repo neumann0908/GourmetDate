@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
 
-// Enum para controlar la navegación entre secciones
+// Enum para controlar la navegación interactiva entre secciones
 enum class Seccion(val titulo: String, val ruta: String, val icono: String) {
     ESCRITORIO("Escritorio Principal", "/C/GOURMETDATE/DESKTOP/", "🖥️"),
     INGREDIENTES("Catálogo de Ingredientes", "/C/GOURMETDATE/INGREDIENTES/", "📁"),
@@ -65,7 +65,6 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RetroMermasApp() {
-    // Estado de la sección actual seleccionada
     var seccionActual by remember { mutableStateOf(Seccion.MERMAS) }
 
     Column(
@@ -109,7 +108,7 @@ fun RetroMermasApp() {
                     .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(10.dp))
                     .border(2.dp, Color.Black, shape = RoundedCornerShape(10.dp))
             ) {
-                // Barra de título dinámico
+                // Barra de título
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -146,7 +145,7 @@ fun RetroMermasApp() {
                     }
                 }
 
-                // Selector de vistas según la sección seleccionada
+                // Cambio dinámico de pantalla según sección
                 when (seccionActual) {
                     Seccion.MERMAS -> IngredientesFormularioRetro()
                     else -> SeccionEnConstruccion(seccion = seccionActual)
@@ -154,7 +153,7 @@ fun RetroMermasApp() {
             }
         }
 
-        // --- 3. Dock Inferior / Taskbar Interactivo ---
+        // --- 3. Dock Inferior Interactivo ---
         RetroBottomDock(
             seccionActual = seccionActual,
             onSeccionSeleccionada = { seccionActual = it }
@@ -188,7 +187,7 @@ fun SeccionEnConstruccion(seccion: Seccion) {
                     .padding(12.dp)
             ) {
                 Text(
-                    text = "⚙️ Módulo en desarrollo. Usa la barra inferior para volver a MERMAS.",
+                    text = "⚙️ Módulo en desarrollo. Toca MERMAS abajo para regresar.",
                     fontSize = 12.sp,
                     color = Color.DarkGray
                 )
@@ -497,4 +496,4 @@ fun IngredientesFormularioRetro() {
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(ing.nombre, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("Rendimiento: 
+                            Text("Rendimiento: ${String.format(Locale.US, "%.1f%%", ing.rendimiento)}", fontSize = 12.sp
