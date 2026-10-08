@@ -16,7 +16,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 
-// Modelo de datos expandido
+// Modelo de datos expandido con análisis
 data class Ingrediente(
     val id: String = java.util.UUID.randomUUID().toString(),
     val nombre: String,
@@ -25,7 +25,8 @@ data class Ingrediente(
     val pesoNeto: Double,
     val unidad: String,
     val rendimiento: Double,
-    val costoReal: Double
+    val costoReal: Double,
+    val analisisResumen: String
 )
 
 class MainActivity : ComponentActivity() {
@@ -60,6 +61,7 @@ fun IngredientesScreen() {
     // Estado del cálculo actual
     var rendimientoCalculado by remember { mutableStateOf<Double?>(null) }
     var costoRealCalculado by remember { mutableStateOf<Double?>(null) }
+    var analisisTextoCalculado by remember { mutableStateOf("") }
     var mensajeError by remember { mutableStateOf("") }
 
     // Inventario de insumos
@@ -126,28 +128,38 @@ fun IngredientesScreen() {
             )
         }
 
+        // 1. Costo ($) alineado verticalmente a la izquierda
+        item {
+            OutlinedTextField(
+                value = costo,
+                onValueChange = { costo = it },
+                label = { Text("Costo ($)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { focusState ->
+                        if (!focusState.isFocused) {
+                            formatearCosto()
+                        }
+                    }
+            )
+        }
+
+        // 2. Peso Bruto + Botón de Selección de Unidad en la misma fila
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Campo Costo con auto-formato de decimales
                 OutlinedTextField(
-                    value = costo,
-                    onValueChange = { costo = it },
-                    label = { Text("Costo ($)") },
+                    value = pesoBruto,
+                    onValueChange = { pesoBruto = it },
+                    label = { Text("P. Bruto ($unidadSeleccionada)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier
-                        .weight(1.5f)
-                        .onFocusChanged { focusState ->
-                            if (!focusState.isFocused) {
-                                formatearCosto()
-                            }
-                        }
+                    modifier = Modifier.weight(1.5f)
                 )
 
-                // Dropdown para seleccionar unidad de medida
                 Box(modifier = Modifier.weight(1f)) {
                     OutlinedButton(
                         onClick = { menuUnidadesExpandido = true },
@@ -175,26 +187,15 @@ fun IngredientesScreen() {
             }
         }
 
+        // 3. Peso Neto alineado verticalmente
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = pesoBruto,
-                    onValueChange = { pesoBruto = it },
-                    label = { Text("P. Bruto ($unidadSeleccionada)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f)
-                )
-                OutlinedTextField(
-                    value = pesoNeto,
-                    onValueChange = { pesoNeto = it },
-                    label = { Text("P. Neto ($unidadSeleccionada)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            OutlinedTextField(
+                value = pesoNeto,
+                onValueChange = { pesoNeto = it },
+                label = { Text("P. Neto ($unidadSeleccionada)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         // --- Botones de Acción ---
@@ -211,13 +212,26 @@ fun IngredientesScreen() {
                         val pn = pesoNeto.toDoubleOrNull() ?: 0.0
 
                         if (pb > 0 && pn > 0 && pn <= pb) {
-                            rendimientoCalculado = (pn / pb) * 100
-                            costoRealCalculado = c / pn
+                            val rend = (pn / pb) * 100
+                            val cReal = c / pn
+                            val mermaPeso = pb - pn
+                            val porcentajeMerma = 100.0 - rend
+                            val costoInicialPorUnidad = c / pb
+
+                            rendimientoCalculado = rend
+                            costoRealCalculado = cReal
+
+                            analisisTextoCalculado = String.format(
+                                Locale.US,
+                                "💡 Análisis: Desperdicias %.2f %s de merma (%.1f%%). Tu costo unitario sube de $%.2f a $%.2f por %s utilizable.",
+                                mermaPeso, unidadSeleccionada, porcentajeMerma, costoInicialPorUnidad, cReal, unidadSeleccionada
+                            )
                             mensajeError = ""
                         } else {
                             mensajeError = "Datos inválidos: El P. Neto debe ser menor o igual al P. Bruto."
                             rendimientoCalculado = null
                             costoRealCalculado = null
+                            analisisTextoCalculado = ""
                         }
                     },
                     modifier = Modifier.weight(1f)
@@ -241,7 +255,8 @@ fun IngredientesScreen() {
                                     pesoNeto = pnVal,
                                     unidad = unidadSeleccionada,
                                     rendimiento = rendimientoCalculado!!,
-                                    costoReal = costoRealCalculado!!
+                                    costoReal = costoRealCalculado!!,
+                                    analisisResumen = analisisTextoCalculado
                                 )
                             )
 
@@ -252,6 +267,7 @@ fun IngredientesScreen() {
                             pesoNeto = ""
                             rendimientoCalculado = null
                             costoRealCalculado = null
+                            analisisTextoCalculado = ""
                         }
                     },
                     enabled = rendimientoCalculado != null,
@@ -268,7 +284,7 @@ fun IngredientesScreen() {
             }
         }
 
-        // --- Mostrar Resultado Temporal ---
+        // --- Mostrar Resultado Temporal y Análisis ---
         if (rendimientoCalculado != null && costoRealCalculado != null) {
             item {
                 Card(
@@ -280,12 +296,21 @@ fun IngredientesScreen() {
                             text = "Resultado para: ${if (nombre.isEmpty()) "Ingrediente" else nombre}",
                             style = MaterialTheme.typography.titleSmall
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(text = "Rendimiento: ${String.format(Locale.US, "%.2f%%", rendimientoCalculado)}")
                         Text(
                             text = "Costo Real: $${String.format(Locale.US, "%.2f", costoRealCalculado)} / $unidadSeleccionada",
                             color = MaterialTheme.colorScheme.primary,
                             style = MaterialTheme.typography.bodyLarge
                         )
+                        if (analisisTextoCalculado.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = analisisTextoCalculado,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -319,9 +344,16 @@ fun IngredientesScreen() {
                             text = "Costo Real: $${String.format(Locale.US, "%.2f", ing.costoReal)} / ${ing.unidad}",
                             color = MaterialTheme.colorScheme.primary
                         )
+                        if (ing.analisisResumen.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = ing.analisisResumen,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
 
-                    // Botón para eliminar elemento
                     IconButton(onClick = { listaIngredientes.remove(ing) }) {
                         Text("🗑️")
                     }
