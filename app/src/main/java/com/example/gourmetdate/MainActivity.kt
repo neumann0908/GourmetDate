@@ -58,4 +58,39 @@ fun IngredientesScreen() {
 
         OutlinedTextField(
             value = costo,
-            
+            onValueChange = { costo = it },
+            label = { Text("Costo total de compra ($)") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = pesoBruto,
+            onValueChange = { pesoBruto = it },
+            label = { Text("Peso Bruto (con cáscara/empaque)") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = pesoNeto,
+            onValueChange = { pesoNeto = it },
+            label = { Text("Peso Neto (solo lo utilizable)") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Button(
+            onClick = { /* Aquí conectaremos la fórmula de merma luego */ },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Calcular Rendimiento")
+        }
+    }
+}
