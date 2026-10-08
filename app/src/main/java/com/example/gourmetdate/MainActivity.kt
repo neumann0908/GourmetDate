@@ -251,4 +251,507 @@ fun IngredientesFormularioRetro() {
                             .offset(x = (-2).dp, y = (-2).dp)
                             .background(Color(0xFFE0E7FF), shape = RoundedCornerShape(8.dp))
                             .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
-                            
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Total Insumos", fontSize = 11.sp, color = Color.DarkGray)
+                            Text("${listaIngredientes.size}", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Rendimiento Promedio", fontSize = 11.sp, color = Color.DarkGray)
+                            Text(
+                                String.format(Locale.US, "%.1f%%", promedioRendimiento),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Color(0xFF6B21A8)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            RetroInputField(
+                label = "Nombre del ingrediente (ej. Aguacate)",
+                value = nombre,
+                onValueChange = { nombre = it },
+                placeholderText = "(ej. Aguacate)"
+            )
+        }
+
+        item {
+            RetroInputField(
+                label = "Costo total de compra ($)",
+                value = costo,
+                onValueChange = { costo = it },
+                placeholderText = "Costo total de compra ($)",
+                keyboardType = KeyboardType.Number,
+                onFocusLost = { formatearCosto() }
+            )
+        }
+
+        item {
+            Column {
+                Text(
+                    text = "Peso Bruto (con cáscara/empaque)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(modifier = Modifier.weight(1.8f)) {
+                        RetroTextFieldRaw(
+                            value = pesoBruto,
+                            onValueChange = { pesoBruto = it },
+                            placeholderText = "Peso Bruto (con cáscara/empaque)",
+                            keyboardType = KeyboardType.Number
+                        )
+                    }
+
+                    Box(modifier = Modifier.weight(1f)) {
+                        RetroButtonSmall(
+                            text = "Unidad: $unidadSeleccionada",
+                            onClick = { menuUnidadesExpandido = true }
+                        )
+                        DropdownMenu(
+                            expanded = menuUnidadesExpandido,
+                            onDismissRequest = { menuUnidadesExpandido = false }
+                        ) {
+                            unidades.forEach { u ->
+                                DropdownMenuItem(
+                                    text = { Text(u) },
+                                    onClick = {
+                                        unidadSeleccionada = u
+                                        menuUnidadesExpandido = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            RetroInputField(
+                label = "Peso Neto (solo lo utilizable)",
+                value = pesoNeto,
+                onValueChange = { pesoNeto = it },
+                placeholderText = "Peso Neto (solo lo utilizable)",
+                keyboardType = KeyboardType.Number
+            )
+        }
+
+        item {
+            RetroButton(
+                text = "Calcular Rendimiento",
+                onClick = {
+                    formatearCosto()
+                    val c = costo.toDoubleOrNull() ?: 0.0
+                    val pb = pesoBruto.toDoubleOrNull() ?: 0.0
+                    val pn = pesoNeto.toDoubleOrNull() ?: 0.0
+
+                    if (pb > 0 && pn > 0 && pn <= pb) {
+                        val rend = (pn / pb) * 100
+                        val cReal = c / pn
+                        val mermaPeso = pb - pn
+                        val porcentajeMerma = 100.0 - rend
+                        val costoInicial = c / pb
+
+                        rendimientoCalculado = rend
+                        costoRealCalculado = cReal
+
+                        analisisTextoCalculado = String.format(
+                            Locale.US,
+                            "💡 Análisis: Desperdicias %.2f %s de merma (%.1f%%). Tu costo sube de $%.2f a $%.2f por %s utilizable.",
+                            mermaPeso, unidadSeleccionada, porcentajeMerma, costoInicial, cReal, unidadSeleccionada
+                        )
+                        mensajeError = ""
+                    } else {
+                        mensajeError = "P. Neto debe ser menor o igual a P. Bruto."
+                        rendimientoCalculado = null
+                        costoRealCalculado = null
+                        analisisTextoCalculado = ""
+                    }
+                },
+                backgroundColor = Color(0xFF6B21A8)
+            )
+        }
+
+        if (mensajeError.isNotEmpty()) {
+            item {
+                Text(text = mensajeError, color = Color.Red, fontSize = 12.sp)
+            }
+        }
+
+        if (rendimientoCalculado != null && costoRealCalculado != null) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset(x = (-2).dp, y = (-2).dp)
+                            .background(Color(0xFFFEF3C7), shape = RoundedCornerShape(8.dp))
+                            .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            text = "Resultado: ${if (nombre.isEmpty()) "Ingrediente" else nombre}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "Rendimiento: ${String.format(Locale.US, "%.1f%%", rendimientoCalculado)}",
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "Costo Real: $${String.format(Locale.US, "%.2f", costoRealCalculado)} / $unidadSeleccionada",
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF6B21A8),
+                            fontSize = 14.sp
+                        )
+                        if (analisisTextoCalculado.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(text = analisisTextoCalculado, fontSize = 12.sp, color = Color.DarkGray)
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        RetroButtonSmall(
+                            text = "Guardar Insumo",
+                            onClick = {
+                                val cVal = costo.toDoubleOrNull() ?: 0.0
+                                val pbVal = pesoBruto.toDoubleOrNull() ?: 0.0
+                                val pnVal = pesoNeto.toDoubleOrNull() ?: 0.0
+                                val nom = if (nombre.isBlank()) "Ingrediente ${listaIngredientes.size + 1}" else nombre
+
+                                listaIngredientes.add(
+                                    Ingrediente(
+                                        nombre = nom,
+                                        costo = cVal,
+                                        pesoBruto = pbVal,
+                                        pesoNeto = pnVal,
+                                        unidad = unidadSeleccionada,
+                                        rendimiento = rendimientoCalculado!!,
+                                        costoReal = costoRealCalculado!!,
+                                        analisisResumen = analisisTextoCalculado
+                                    )
+                                )
+
+                                nombre = ""
+                                costo = ""
+                                pesoBruto = ""
+                                pesoNeto = ""
+                                rendimientoCalculado = null
+                                costoRealCalculado = null
+                                analisisTextoCalculado = ""
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        if (listaIngredientes.isNotEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(Color.Black)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Mis Insumos Registrados",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = Color.Black
+                )
+            }
+
+            items(listaIngredientes, key = { it.id }) { ing ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset(x = (-2).dp, y = (-2).dp)
+                            .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
+                            .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(ing.nombre, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Rendimiento: ${String.format(Locale.US, "%.1f%%", ing.rendimiento)}", fontSize = 12.sp)
+                            Text(
+                                "Costo Real: $${String.format(Locale.US, "%.2f", ing.costoReal)} / ${ing.unidad}",
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF6B21A8),
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        IconButton(onClick = { listaIngredientes.remove(ing) }) {
+                            Text("🗑️", fontSize = 16.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// =====================================================================
+// AQUI ESTÁN LOS COMPONENTES PERSONALIZADOS QUE FALTABAN
+// (RetroInputField, RetroTextFieldRaw, RetroButton, RetroButtonSmall, RetroBottomDock, DockItem)
+// NO BORRES NADA DE LO QUE SIGUE A CONTINUACIÓN
+// =====================================================================
+
+@Composable
+fun RetroInputField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholderText: String = "",
+    keyboardType: KeyboardType = KeyboardType.Text,
+    onFocusLost: () -> Unit = {}
+) {
+    Column {
+        Text(
+            text = label,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.Black,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        RetroTextFieldRaw(
+            value = value,
+            onValueChange = onValueChange,
+            placeholderText = placeholderText,
+            keyboardType = keyboardType,
+            onFocusLost = onFocusLost
+        )
+    }
+}
+
+@Composable
+fun RetroTextFieldRaw(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholderText: String,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    onFocusLost: (() -> Unit)? = null
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.Black, shape = RoundedCornerShape(6.dp))
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = { Text(placeholderText, color = Color.Gray, fontSize = 13.sp) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color.Black,
+                unfocusedBorderColor = Color.Black
+            ),
+            shape = RoundedCornerShape(6.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset(x = (-2).dp, y = (-2).dp)
+                .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(6.dp))
+                .onFocusChanged { focusState ->
+                    if (!focusState.isFocused && onFocusLost != null) {
+                        onFocusLost()
+                    }
+                }
+        )
+    }
+}
+
+@Composable
+fun RetroButton(
+    text: String,
+    onClick: () -> Unit,
+    backgroundColor: Color = Color(0xFF6B21A8)
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .background(Color.Black, shape = RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset(x = (-3).dp, y = (-3).dp)
+                .background(backgroundColor, shape = RoundedCornerShape(6.dp))
+                .border(2.dp, Color.Black, shape = RoundedCornerShape(6.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun RetroButtonSmall(
+    text: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .background(Color.Black, shape = RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset(x = (-2).dp, y = (-2).dp)
+                .background(Color(0xFFE5E7EB), shape = RoundedCornerShape(6.dp))
+                .border(1.5.dp, Color.Black, shape = RoundedCornerShape(6.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                color = Color.Black,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun RetroBottomDock(
+    seccionActual: Seccion,
+    onSeccionSeleccionada: (Seccion) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFE5DFEE))
+                .border(1.dp, Color.Black)
+                .padding(vertical = 4.dp, horizontal = 2.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            DockItem(
+                icon = Seccion.ESCRITORIO.icono,
+                label = "ESCRITORIO",
+                isSelected = seccionActual == Seccion.ESCRITORIO,
+                onClick = { onSeccionSeleccionada(Seccion.ESCRITORIO) }
+            )
+            DockItem(
+                icon = Seccion.INGREDIENTES.icono,
+                label = "INGREDIEN...",
+                isSelected = seccionActual == Seccion.INGREDIENTES,
+                onClick = { onSeccionSeleccionada(Seccion.INGREDIENTES) }
+            )
+            DockItem(
+                icon = Seccion.RECETAS.icono,
+                label = "RECETAS",
+                isSelected = seccionActual == Seccion.RECETAS,
+                onClick = { onSeccionSeleccionada(Seccion.RECETAS) }
+            )
+            DockItem(
+                icon = Seccion.PROVEEDORES.icono,
+                label = "PROVEEDOR...",
+                isSelected = seccionActual == Seccion.PROVEEDORES,
+                onClick = { onSeccionSeleccionada(Seccion.PROVEEDORES) }
+            )
+            DockItem(
+                icon = Seccion.ORDENES.icono,
+                label = "ÓRDENES",
+                isSelected = seccionActual == Seccion.ORDENES,
+                onClick = { onSeccionSeleccionada(Seccion.ORDENES) }
+            )
+            DockItem(
+                icon = Seccion.MERMAS.icono,
+                label = "MERMAS",
+                isSelected = seccionActual == Seccion.MERMAS,
+                onClick = { onSeccionSeleccionada(Seccion.MERMAS) }
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFFFD000))
+                .border(1.dp, Color.Black)
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "GOURMET STATUS",
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                color = Color.Black
+            )
+            Text(
+                text = "  |  SECCIÓN: ${seccionActual.name}",
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                color = Color.Black
+            )
+        }
+    }
+}
+
+@Composable
+fun DockItem(
+    icon: String,
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .background(
+                color = if (isSelected) Color(0xFFFFE600) else Color.Transparent,
+                shape = RoundedCornerShape(4.dp)
+            )
+            .border(
+                width = if (isSelected) 1.dp else 0.dp,
+                color = if (isSelected) Color.Black else Color.Transparent,
+                shape = RoundedCornerShape(4.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 3.dp, vertical = 2.dp)
+    ) {
+        Text(text = icon, fontSize = 14.sp)
+        Text(
+            text = label,
+            fontSize = 8.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            color = Color.Black
+        )
+    }
+}
