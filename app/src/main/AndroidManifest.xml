@@ -4,10 +4,10 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
+        android:label="Gourmet Date"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -19,118 +19,3 @@
     </application>
 
 </manifest>
-nombre = nom,
-                                    costo = cVal,
-                                    pesoBruto = pbVal,
-                                    pesoNeto = pnVal,
-                                    unidad = unidadSeleccionada,
-                                    rendimiento = rendimientoCalculado!!,
-                                    costoReal = costoRealCalculado!!,
-                                    analisisResumen = analisisTextoCalculado
-                                )
-                            )
-
-                            // Limpiar formulario
-                            nombre = ""
-                            costo = ""
-                            pesoBruto = ""
-                            pesoNeto = ""
-                            rendimientoCalculado = null
-                            costoRealCalculado = null
-                            analisisTextoCalculado = ""
-                        }
-                    },
-                    enabled = rendimientoCalculado != null,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Guardar")
-                }
-            }
-        }
-
-        if (mensajeError.isNotEmpty()) {
-            item {
-                Text(text = mensajeError, color = MaterialTheme.colorScheme.error)
-            }
-        }
-
-        // --- Mostrar Resultado Temporal y Análisis ---
-        if (rendimientoCalculado != null && costoRealCalculado != null) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = "Resultado para: ${if (nombre.isEmpty()) "Ingrediente" else nombre}",
-                            style = MaterialTheme.typography.titleSmall
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = "Rendimiento: ${String.format(Locale.US, "%.2f%%", rendimientoCalculado)}")
-                        Text(
-                            text = "Costo Real: $${String.format(Locale.US, "%.2f", costoRealCalculado)} / $unidadSeleccionada",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        if (analisisTextoCalculado.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = analisisTextoCalculado,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- Lista de Insumos Registrados ---
-        item {
-            Spacer(modifier = Modifier.height(8.dp))
-            Divider()
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(text = "Mis Insumos Registrados", style = MaterialTheme.typography.titleMedium)
-        }
-
-        items(listaIngredientes, key = { it.id }) { ing ->
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = ing.nombre, style = MaterialTheme.typography.titleSmall)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = "Rendimiento: ${String.format(Locale.US, "%.1f%%", ing.rendimiento)}")
-                        Text(
-                            text = "Costo Real: $${String.format(Locale.US, "%.2f", ing.costoReal)} / ${ing.unidad}",
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        if (ing.analisisResumen.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = ing.analisisResumen,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    // Botón para eliminar elemento
-                    IconButton(onClick = { listaIngredientes.remove(ing) }) {
-                        Text("🗑️")
-                    }
-                }
-            }
-        }
-    }
-}
-                            
