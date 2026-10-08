@@ -66,6 +66,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun RetroMermasApp() {
     var seccionActual by remember { mutableStateOf(Seccion.MERMAS) }
+    
+    // Lista elevada aquí para que los datos persistan aunque cambies de sección
+    val listaIngredientes = remember { mutableStateListOf<Ingrediente>() }
 
     Column(
         modifier = Modifier
@@ -145,9 +148,9 @@ fun RetroMermasApp() {
                     }
                 }
 
-                // Cambio dinámico de pantalla según sección
+                // Cambio dinámico de pantalla según sección (pasando la lista a mermas)
                 when (seccionActual) {
-                    Seccion.MERMAS -> IngredientesFormularioRetro()
+                    Seccion.MERMAS -> IngredientesFormularioRetro(listaIngredientes = listaIngredientes)
                     else -> SeccionEnConstruccion(seccion = seccionActual)
                 }
             }
@@ -197,7 +200,7 @@ fun SeccionEnConstruccion(seccion: Seccion) {
 }
 
 @Composable
-fun IngredientesFormularioRetro() {
+fun IngredientesFormularioRetro(listaIngredientes: MutableList<Ingrediente>) {
     var nombre by remember { mutableStateOf("") }
     var costo by remember { mutableStateOf("") }
     var pesoBruto by remember { mutableStateOf("") }
@@ -211,8 +214,6 @@ fun IngredientesFormularioRetro() {
     var costoRealCalculado by remember { mutableStateOf<Double?>(null) }
     var analisisTextoCalculado by remember { mutableStateOf("") }
     var mensajeError by remember { mutableStateOf("") }
-
-    val listaIngredientes = remember { mutableStateListOf<Ingrediente>() }
 
     fun formatearCosto() {
         val valor = costo.toDoubleOrNull()
@@ -516,9 +517,7 @@ fun IngredientesFormularioRetro() {
 }
 
 // =====================================================================
-// AQUI ESTÁN LOS COMPONENTES PERSONALIZADOS QUE FALTABAN
-// (RetroInputField, RetroTextFieldRaw, RetroButton, RetroButtonSmall, RetroBottomDock, DockItem)
-// NO BORRES NADA DE LO QUE SIGUE A CONTINUACIÓN
+// COMPONENTES RETRO PERSONALIZADOS
 // =====================================================================
 
 @Composable
