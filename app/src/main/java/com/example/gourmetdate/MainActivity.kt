@@ -82,6 +82,23 @@ data class Proveedor(
     val notas: String
 )
 
+data class ItemOrden(
+    val ingredienteNombre: String,
+    val cantidad: Double,
+    val unidad: String,
+    val costoUnitario: Double,
+    val subtotal: Double
+)
+
+data class OrdenCompra(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val folio: String,
+    val proveedorNombre: String,
+    val estado: String, // "BORRADOR", "ENVIADA", "RECIBIDA"
+    val items: List<ItemOrden>,
+    val total: Double
+)
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -100,7 +117,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RetroMermasApp() {
-    var seccionActual by remember { mutableStateOf(Seccion.PROVEEDORES) }
+    var seccionActual by remember { mutableStateOf(Seccion.ORDENES) }
 
     val context = LocalContext.current
     val sharedPreferences = remember { context.getSharedPreferences("gourmetdate_prefs", Context.MODE_PRIVATE) }
@@ -133,6 +150,15 @@ fun RetroMermasApp() {
         }
     }
 
+    val listaOrdenes = remember {
+        val json = sharedPreferences.getString("lista_ordenes", null)
+        val listType = object : TypeToken<ArrayList<OrdenCompra>>() {}.type
+        val savedList: ArrayList<OrdenCompra>? = if (json != null) gson.fromJson(json, listType) else null
+        mutableStateListOf<OrdenCompra>().apply {
+            if (savedList != null) addAll(savedList)
+        }
+    }
+
     fun guardarIngredientes() {
         val json = gson.toJson(listaIngredientes.toList())
         sharedPreferences.edit().putString("lista_ingredientes", json).apply()
@@ -146,6 +172,11 @@ fun RetroMermasApp() {
     fun guardarProveedores() {
         val json = gson.toJson(listaProveedores.toList())
         sharedPreferences.edit().putString("lista_proveedores", json).apply()
+    }
+
+    fun guardarOrdenes() {
+        val json = gson.toJson(listaOrdenes.toList())
+        sharedPreferences.edit().putString("lista_ordenes", json).apply()
     }
 
     Column(
@@ -212,6 +243,12 @@ fun RetroMermasApp() {
                 }
 
                 when (seccionActual) {
+                    Seccion.ORDENES -> OrdenesFormularioRetro(
+                        listaOrdenes = listaOrdenes,
+                        listaProveedores = listaProveedores,
+                        listaIngredientes = listaIngredientes,
+                        onGuardarOrdenes = { guardarOrdenes() }
+                    )
                     Seccion.PROVEEDORES -> ProveedoresFormularioRetro(
                         listaProveedores = listaProveedores,
                         onGuardarProveedores = { guardarProveedores() }
@@ -242,6 +279,366 @@ fun RetroMermasApp() {
         )
     }
 }
+
+// =====================================================================
+// MÓDULO DE ÓRDENES DE COMPRA (DISEÑO FIEL A TUS REFERENCIAS)
+// =====================================================================
+
+@Composable
+fun OrdenesFormularioRetro(
+    listaOrdenes: MutableList<OrdenCompra>,
+    listaProveedores: List<Proveedor>,
+    listaIngredientes: List<Ingrediente>,
+    onGuardarOrdenes: () -> Unit
+) {
+    var busqueda by remember { mutableStateOf("") }
+    var filtroEstado by remember { mutableStateOf("TODAS") }
+    var creandoNuevaOrden by remember { mutableStateOf(false) }
+
+    // Formulario de Nueva Orden
+    var proveedorSeleccionado by remember { mutableStateOf<Proveedor?>(null) }
+    var menuProvExpandido by remember { mutableStateOf(false) }
+    var estadoOrdenSeleccionado by remember { mutableStateOf("BORRADOR") }
+
+    val itemsAgregados = remember { mutableStateListOf<ItemOrden>() }
+    var ingredienteSeleccionado by remember { mutableStateOf<Ingrediente?>(null) }
+    var menuIngExpandido by remember { mutableStateOf(false) }
+    var cantidadText by remember { mutableStateOf("1") }
+
+    val totalNuevaOrden = itemsAgregados.sumOf { it.subtotal }
+
+    val ordenesFiltradas = listaOrdenes.filter { ord ->
+        val coincideBusqueda = ord.folio.contains(busqueda, ignoreCase = true) || ord.proveedorNombre.contains(busqueda, ignoreCase = true)
+        val coincideEstado = filtroEstado == "TODAS" || ord.estado.equals(filtroEstado, ignoreCase = true)
+        coincideBusqueda && coincideEstado
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // --- BLOQUE PRINCIPAL ÓRDENES ---
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black, shape = RoundedCornerShape(8.dp))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
+                        .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    // Header Azul
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0072C6), shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Órdenes (${listaOrdenes.size})",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(8.dp).background(Color.White, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color.LightGray, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFE81123), RoundedCornerShape(50)))
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        RetroInputField(
+                            label = "Buscar",
+                            value = busqueda,
+                            onValueChange = { busqueda = it },
+                            placeholderText = "Folio o proveedor..."
+                        )
+
+                        RetroButton(
+                            text = if (creandoNuevaOrden) "Cancelar" else "Nueva orden",
+                            onClick = { creandoNuevaOrden = !creandoNuevaOrden },
+                            backgroundColor = if (creandoNuevaOrden) Color(0xFFDC2626) else Color(0xFF6B21A8)
+                        )
+
+                        // Filtros de Estado
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            listOf("TODAS", "BORRADOR", "ENVIADA", "RECIBIDA").forEach { est ->
+                                val esSeleccionado = filtroEstado == est
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(36.dp)
+                                        .background(Color.Black, shape = RoundedCornerShape(4.dp))
+                                        .clickable { filtroEstado = est }
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .offset(x = (-2).dp, y = (-2).dp)
+                                            .background(if (esSeleccionado) Color(0xFFFFD000) else Color(0xFFE5E7EB), shape = RoundedCornerShape(4.dp))
+                                            .border(1.dp, Color.Black, shape = RoundedCornerShape(4.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = est,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.Black
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!creandoNuevaOrden) {
+                            Divider(color = Color.LightGray, thickness = 1.dp, modifier = Modifier.padding(vertical = 4.dp))
+
+                            if (ordenesFiltradas.isEmpty()) {
+                                Text(
+                                    text = "No hay órdenes registradas. Crea la primera con el botón «Nueva orden».",
+                                    fontSize = 12.sp,
+                                    color = Color.Gray,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            } else {
+                                ordenesFiltradas.forEach { ord ->
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color.Black, shape = RoundedCornerShape(6.dp))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .offset(x = (-2).dp, y = (-2).dp)
+                                                .background(Color(0xFFFEF3C7), shape = RoundedCornerShape(6.dp))
+                                                .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
+                                                .padding(10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(ord.folio, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = "[${ord.estado}]",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = when (ord.estado) {
+                                                            "RECIBIDA" -> Color(0xFF16A34A)
+                                                            "ENVIADA" -> Color(0xFF2563EB)
+                                                            else -> Color.DarkGray
+                                                        }
+                                                    )
+                                                }
+                                                Text("Proveedor: ${ord.proveedorNombre}", fontSize = 11.sp, color = Color.DarkGray)
+                                                Text(
+                                                    "Total: $${String.format(Locale.US, "%.2f", ord.total)} (${ord.items.size} ítems)",
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF6B21A8),
+                                                    fontSize = 11.sp
+                                                )
+                                            }
+                                            IconButton(onClick = {
+                                                listaOrdenes.remove(ord)
+                                                onGuardarOrdenes()
+                                            }) {
+                                                Text("🗑️", fontSize = 14.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- SUB-FORMULARIO CREAR ORDEN ---
+        if (creandoNuevaOrden) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset(x = (-2).dp, y = (-2).dp)
+                            .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
+                            .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text("Crear Nueva Órden de Compra", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+
+                        // Selector Proveedor
+                        Column {
+                            Text("Proveedor", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                RetroButtonSmall(
+                                    text = proveedorSeleccionado?.nombreRazonSocial ?: "Seleccionar Proveedor...   ▼",
+                                    onClick = { menuProvExpandido = true }
+                                )
+                                DropdownMenu(
+                                    expanded = menuProvExpandido,
+                                    onDismissRequest = { menuProvExpandido = false }
+                                ) {
+                                    if (listaProveedores.isEmpty()) {
+                                        DropdownMenuItem(
+                                            text = { Text("No hay proveedores. Regístralos en PROVEEDORES.") },
+                                            onClick = { menuProvExpandido = false }
+                                        )
+                                    } else {
+                                        listaProveedores.forEach { prov ->
+                                            DropdownMenuItem(
+                                                text = { Text(prov.nombreRazonSocial) },
+                                                onClick = {
+                                                    proveedorSeleccionado = prov
+                                                    menuProvExpandido = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Sub-bloque agregar items
+                        Text("Agregar Insumos", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            RetroButtonSmall(
+                                text = ingredienteSeleccionado?.nombre ?: "Seleccionar Insumo...   ▼",
+                                onClick = { menuIngExpandido = true }
+                            )
+                            DropdownMenu(
+                                expanded = menuIngExpandido,
+                                onDismissRequest = { menuIngExpandido = false }
+                            ) {
+                                if (listaIngredientes.isEmpty()) {
+                                    DropdownMenuItem(
+                                        text = { Text("No hay insumos guardados.") },
+                                        onClick = { menuIngExpandido = false }
+                                    )
+                                } else {
+                                    listaIngredientes.forEach { ing ->
+                                        DropdownMenuItem(
+                                            text = { Text("${ing.nombre} ($${String.format(Locale.US, "%.2f", ing.costo)}/${ing.unidad})") },
+                                            onClick = {
+                                                ingredienteSeleccionado = ing
+                                                menuIngExpandido = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        RetroInputField(
+                            label = "Cantidad a pedir",
+                            value = cantidadText,
+                            onValueChange = { cantidadText = it },
+                            placeholderText = "1",
+                            keyboardType = KeyboardType.Number
+                        )
+
+                        RetroButton(
+                            text = "Añadir a la orden",
+                            onClick = {
+                                val ing = ingredienteSeleccionado
+                                val cant = cantidadText.toDoubleOrNull() ?: 0.0
+                                if (ing != null && cant > 0) {
+                                    val subt = cant * ing.costo
+                                    itemsAgregados.add(
+                                        ItemOrden(
+                                            ingredienteNombre = ing.nombre,
+                                            cantidad = cant,
+                                            unidad = ing.unidad,
+                                            costoUnitario = ing.costo,
+                                            subtotal = subt
+                                        )
+                                    )
+                                    ingredienteSeleccionado = null
+                                    cantidadText = "1"
+                                }
+                            },
+                            backgroundColor = Color(0xFFFFD000)
+                        )
+
+                        if (itemsAgregados.isNotEmpty()) {
+                            Text("Ítems en la orden:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            itemsAgregados.forEach { itm ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("• ${itm.ingredienteNombre}: ${itm.cantidad} ${itm.unidad} ($${String.format(Locale.US, "%.2f", itm.subtotal)})", fontSize = 11.sp)
+                                    IconButton(
+                                        onClick = { itemsAgregados.remove(itm) },
+                                        modifier = Modifier.size(20.dp)
+                                    ) {
+                                        Text("🗑️", fontSize = 12.sp)
+                                    }
+                                }
+                            }
+
+                            Divider(color = Color.LightGray)
+                            Text("Total Orden: $${String.format(Locale.US, "%.2f", totalNuevaOrden)}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF6B21A8))
+                        }
+
+                        RetroButton(
+                            text = "Guardar Orden de Compra",
+                            onClick = {
+                                val prov = proveedorSeleccionado
+                                if (prov != null && itemsAgregados.isNotEmpty()) {
+                                    val numFolio = "ORD-${System.currentTimeMillis().toString().takeLast(4)}"
+                                    listaOrdenes.add(
+                                        OrdenCompra(
+                                            folio = numFolio,
+                                            proveedorNombre = prov.nombreRazonSocial,
+                                            estado = estadoOrdenSeleccionado,
+                                            items = itemsAgregados.toList(),
+                                            total = totalNuevaOrden
+                                        )
+                                    )
+                                    onGuardarOrdenes()
+
+                                    creandoNuevaOrden = false
+                                    proveedorSeleccionado = null
+                                    itemsAgregados.clear()
+                                }
+                            },
+                            backgroundColor = Color(0xFF16A34A)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// =====================================================================
+// OTROS MÓDULOS DEL SISTEMA
+// =====================================================================
 
 @Composable
 fun ProveedoresFormularioRetro(
@@ -1658,6 +2055,10 @@ fun IngredientesFormularioRetro(
         }
     }
 }
+
+// =====================================================================
+// COMPONENTES RETRO PERSONALIZADOS
+// =====================================================================
 
 @Composable
 fun RetroInputField(
