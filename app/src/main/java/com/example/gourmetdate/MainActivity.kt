@@ -71,6 +71,17 @@ data class Receta(
     val costoPorPorcion: Double
 )
 
+data class Proveedor(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val nombreRazonSocial: String,
+    val personaContacto: String,
+    val telefono: String,
+    val correo: String,
+    val direccion: String,
+    val estado: String, // "Activo" o "Inactivo"
+    val notas: String
+)
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -89,7 +100,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RetroMermasApp() {
-    var seccionActual by remember { mutableStateOf(Seccion.INGREDIENTES) }
+    var seccionActual by remember { mutableStateOf(Seccion.PROVEEDORES) }
 
     val context = LocalContext.current
     val sharedPreferences = remember { context.getSharedPreferences("gourmetdate_prefs", Context.MODE_PRIVATE) }
@@ -113,6 +124,15 @@ fun RetroMermasApp() {
         }
     }
 
+    val listaProveedores = remember {
+        val json = sharedPreferences.getString("lista_proveedores", null)
+        val listType = object : TypeToken<ArrayList<Proveedor>>() {}.type
+        val savedList: ArrayList<Proveedor>? = if (json != null) gson.fromJson(json, listType) else null
+        mutableStateListOf<Proveedor>().apply {
+            if (savedList != null) addAll(savedList)
+        }
+    }
+
     fun guardarIngredientes() {
         val json = gson.toJson(listaIngredientes.toList())
         sharedPreferences.edit().putString("lista_ingredientes", json).apply()
@@ -121,6 +141,11 @@ fun RetroMermasApp() {
     fun guardarRecetas() {
         val json = gson.toJson(listaRecetas.toList())
         sharedPreferences.edit().putString("lista_recetas", json).apply()
+    }
+
+    fun guardarProveedores() {
+        val json = gson.toJson(listaProveedores.toList())
+        sharedPreferences.edit().putString("lista_proveedores", json).apply()
     }
 
     Column(
@@ -187,8 +212,13 @@ fun RetroMermasApp() {
                 }
 
                 when (seccionActual) {
+                    Seccion.PROVEEDORES -> ProveedoresFormularioRetro(
+                        listaProveedores = listaProveedores,
+                        onGuardarProveedores = { guardarProveedores() }
+                    )
                     Seccion.INGREDIENTES -> CatalogoIngredientesRetro(
                         listaIngredientes = listaIngredientes,
+                        listaProveedores = listaProveedores,
                         onGuardarCambios = { guardarIngredientes() },
                         onIrAMermas = { seccionActual = Seccion.MERMAS }
                     )
@@ -214,12 +244,349 @@ fun RetroMermasApp() {
 }
 
 // =====================================================================
-// MÓDULO CATÁLOGO DE INGREDIENTES (DISEÑO FIEL A REFERENCIAS)
+// MÓDULO DE PROVEEDORES (DISEÑO FIEL A TUS REFERENCIAS)
+// =====================================================================
+
+@Composable
+fun ProveedoresFormularioRetro(
+    listaProveedores: MutableList<Proveedor>,
+    onGuardarProveedores: () -> Unit
+) {
+    var nombreRazonSocial by remember { mutableStateOf("") }
+    var personaContacto by remember { mutableStateOf("") }
+    var telefono by remember { mutableStateOf("") }
+    var correo by remember { mutableStateOf("") }
+    var direccion by remember { mutableStateOf("") }
+    var estadoSeleccionado by remember { mutableStateOf("Activo") }
+    var menuEstadoExpandido by remember { mutableStateOf(false) }
+    var notas by remember { mutableStateOf("") }
+
+    var busquedaNombre by remember { mutableStateOf("") }
+    var filtroEstado by remember { mutableStateOf("Todos") }
+    var menuFiltroEstadoExpandido by remember { mutableStateOf(false) }
+
+    val estadosList = listOf("Activo", "Inactivo")
+    val opcionesFiltroEstado = listOf("Todos", "Activo", "Inactivo")
+
+    val proveedoresFiltrados = listaProveedores.filter { prov ->
+        val coincideNombre = prov.nombreRazonSocial.contains(busquedaNombre, ignoreCase = true)
+        val coincideEstado = filtroEstado == "Todos" || prov.estado.equals(filtroEstado, ignoreCase = true)
+        coincideNombre && coincideEstado
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // --- BLOQUE 1: NUEVO PROVEEDOR ---
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black, shape = RoundedCornerShape(8.dp))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
+                        .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    // Header Azul
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0072C6), shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Nuevo proveedor",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(8.dp).background(Color.White, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color.LightGray, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFE81123), RoundedCornerShape(50)))
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        RetroInputField(
+                            label = "Nombre / razón social",
+                            value = nombreRazonSocial,
+                            onValueChange = { nombreRazonSocial = it },
+                            placeholderText = "ej. Distribuidora del Valle"
+                        )
+
+                        RetroInputField(
+                            label = "Persona de contacto",
+                            value = personaContacto,
+                            onValueChange = { personaContacto = it },
+                            placeholderText = "ej. María López"
+                        )
+
+                        RetroInputField(
+                            label = "Teléfono",
+                            value = telefono,
+                            onValueChange = { telefono = it },
+                            placeholderText = "ej. 55 1234 5678",
+                            keyboardType = KeyboardType.Phone
+                        )
+
+                        RetroInputField(
+                            label = "Correo electrónico",
+                            value = correo,
+                            onValueChange = { correo = it },
+                            placeholderText = "ej. ventas@proveedor.mx",
+                            keyboardType = KeyboardType.EmailAddress
+                        )
+
+                        RetroInputField(
+                            label = "Dirección",
+                            value = direccion,
+                            onValueChange = { direccion = it },
+                            placeholderText = "ej. Av. Reforma 123, CDMX"
+                        )
+
+                        // Selector de Estado
+                        Column {
+                            Text("Estado", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.padding(bottom = 4.dp))
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                RetroButtonSmall(
+                                    text = "$estadoSeleccionado   ▼",
+                                    onClick = { menuEstadoExpandido = true }
+                                )
+                                DropdownMenu(
+                                    expanded = menuEstadoExpandido,
+                                    onDismissRequest = { menuEstadoExpandido = false }
+                                ) {
+                                    estadosList.forEach { est ->
+                                        DropdownMenuItem(
+                                            text = { Text(est) },
+                                            onClick = {
+                                                estadoSeleccionado = est
+                                                menuEstadoExpandido = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Campo Notas
+                        Column {
+                            Text("Notas", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.padding(bottom = 4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(90.dp)
+                                    .background(Color.Black, shape = RoundedCornerShape(6.dp))
+                            ) {
+                                OutlinedTextField(
+                                    value = notas,
+                                    onValueChange = { notas = it },
+                                    placeholder = { Text("Condiciones de pago, días de entrega, etc.", color = Color.Gray, fontSize = 13.sp) },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Color.Black,
+                                        unfocusedBorderColor = Color.Black
+                                    ),
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .offset(x = (-2).dp, y = (-2).dp)
+                                        .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(6.dp))
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        RetroButton(
+                            text = "Agregar proveedor",
+                            onClick = {
+                                if (nombreRazonSocial.isNotBlank()) {
+                                    listaProveedores.add(
+                                        Proveedor(
+                                            nombreRazonSocial = nombreRazonSocial,
+                                            personaContacto = personaContacto,
+                                            telefono = telefono,
+                                            correo = correo,
+                                            direccion = direccion,
+                                            estado = estadoSeleccionado,
+                                            notas = notas
+                                        )
+                                    )
+                                    onGuardarProveedores()
+
+                                    nombreRazonSocial = ""
+                                    personaContacto = ""
+                                    telefono = ""
+                                    correo = ""
+                                    direccion = ""
+                                    estadoSeleccionado = "Activo"
+                                    notas = ""
+                                }
+                            },
+                            backgroundColor = Color(0xFF6B21A8)
+                        )
+                    }
+                }
+            }
+        }
+
+        // --- BLOQUE 2: DIRECTORIO (X) ---
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black, shape = RoundedCornerShape(8.dp))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
+                        .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    // Header Azul
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0072C6), shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Directorio (${listaProveedores.size})",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(8.dp).background(Color.White, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color.LightGray, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFE81123), RoundedCornerShape(50)))
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        RetroInputField(
+                            label = "Buscar por nombre",
+                            value = busquedaNombre,
+                            onValueChange = { busquedaNombre = it },
+                            placeholderText = "ej. Distribuidora"
+                        )
+
+                        // Filtro por Estado
+                        Column {
+                            Text("Filtrar por estado", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.padding(bottom = 4.dp))
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                RetroButtonSmall(
+                                    text = "$filtroEstado   ▼",
+                                    onClick = { menuFiltroEstadoExpandido = true }
+                                )
+                                DropdownMenu(
+                                    expanded = menuFiltroEstadoExpandido,
+                                    onDismissRequest = { menuFiltroEstadoExpandido = false }
+                                ) {
+                                    opcionesFiltroEstado.forEach { option ->
+                                        DropdownMenuItem(
+                                            text = { Text(option) },
+                                            onClick = {
+                                                filtroEstado = option
+                                                menuFiltroEstadoExpandido = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Divider(color = Color.LightGray, thickness = 1.dp, modifier = Modifier.padding(vertical = 4.dp))
+
+                        if (proveedoresFiltrados.isEmpty()) {
+                            Text(
+                                text = if (listaProveedores.isEmpty()) "No hay proveedores registrados. Agrega el primero con el formulario de arriba." else "No se encontraron proveedores.",
+                                fontSize = 12.sp,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        } else {
+                            proveedoresFiltrados.forEach { prov ->
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color.Black, shape = RoundedCornerShape(6.dp))
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .offset(x = (-2).dp, y = (-2).dp)
+                                            .background(Color(0xFFFEF3C7), shape = RoundedCornerShape(6.dp))
+                                            .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
+                                            .padding(10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(prov.nombreRazonSocial, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "[${prov.estado}]",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (prov.estado == "Activo") Color(0xFF16A34A) else Color.Red
+                                                )
+                                            }
+                                            if (prov.personaContacto.isNotBlank()) {
+                                                Text("Contacto: ${prov.personaContacto} (${prov.telefono})", fontSize = 11.sp, color = Color.DarkGray)
+                                            }
+                                            if (prov.correo.isNotBlank()) {
+                                                Text("Correo: ${prov.correo}", fontSize = 11.sp, color = Color.DarkGray)
+                                            }
+                                            if (prov.notas.isNotBlank()) {
+                                                Text("Notas: ${prov.notas}", fontSize = 11.sp, color = Color.Gray)
+                                            }
+                                        }
+                                        IconButton(onClick = {
+                                            listaProveedores.remove(prov)
+                                            onGuardarProveedores()
+                                        }) {
+                                            Text("🗑️", fontSize = 14.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// =====================================================================
+// MÓDULO CATÁLOGO DE INGREDIENTES
 // =====================================================================
 
 @Composable
 fun CatalogoIngredientesRetro(
     listaIngredientes: MutableList<Ingrediente>,
+    listaProveedores: List<Proveedor>,
     onGuardarCambios: () -> Unit,
     onIrAMermas: () -> Unit
 ) {
@@ -238,7 +605,7 @@ fun CatalogoIngredientesRetro(
     var menuFiltroCategoriaExpandido by remember { mutableStateOf(false) }
 
     val unidadesList = listOf("kg", "g", "lb", "oz", "ml", "L")
-    val proveedoresList = listOf("Sin proveedor", "Distribuidora Central", "Mercado Local", "Proveedor Carnes")
+    val opcionesProveedores = listOf("Sin proveedor") + listaProveedores.map { it.nombreRazonSocial }
 
     val categoriasDisponibles = listOf("Todas las categorías") + listaIngredientes.map { it.categoria }.distinct()
 
@@ -254,7 +621,6 @@ fun CatalogoIngredientesRetro(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // --- BLOQUE 1: NUEVO INGREDIENTE ---
         item {
             Box(
                 modifier = Modifier
@@ -268,7 +634,6 @@ fun CatalogoIngredientesRetro(
                         .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
                         .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
                 ) {
-                    // Header Azul del Formulario
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -308,7 +673,6 @@ fun CatalogoIngredientesRetro(
                             placeholderText = "ej. Frutas y verduras"
                         )
 
-                        // Selector de Unidad
                         Column {
                             Text("Unidad", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.padding(bottom = 4.dp))
                             Box(modifier = Modifier.fillMaxWidth()) {
@@ -357,7 +721,6 @@ fun CatalogoIngredientesRetro(
                             keyboardType = KeyboardType.Number
                         )
 
-                        // Selector de Proveedor
                         Column {
                             Text("Proveedor (opcional)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.padding(bottom = 4.dp))
                             Box(modifier = Modifier.fillMaxWidth()) {
@@ -369,7 +732,7 @@ fun CatalogoIngredientesRetro(
                                     expanded = menuProveedorExpandido,
                                     onDismissRequest = { menuProveedorExpandido = false }
                                 ) {
-                                    proveedoresList.forEach { p ->
+                                    opcionesProveedores.forEach { p ->
                                         DropdownMenuItem(
                                             text = { Text(p) },
                                             onClick = {
@@ -434,7 +797,6 @@ fun CatalogoIngredientesRetro(
             }
         }
 
-        // --- BLOQUE 2: INVENTARIO (X) ---
         item {
             Box(
                 modifier = Modifier
@@ -448,7 +810,6 @@ fun CatalogoIngredientesRetro(
                         .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
                         .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
                 ) {
-                    // Header Azul del Inventario
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -481,7 +842,6 @@ fun CatalogoIngredientesRetro(
                             placeholderText = "ej. Aguacate"
                         )
 
-                        // Filtro por Categoría
                         Column {
                             Text("Filtrar por categoría", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.padding(bottom = 4.dp))
                             Box(modifier = Modifier.fillMaxWidth()) {
@@ -555,7 +915,6 @@ fun CatalogoIngredientesRetro(
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // Botón Amarillo Retro para abrir Mermas
                         RetroButton(
                             text = "Abrir Ingredientes & Mermas",
                             onClick = onIrAMermas,
