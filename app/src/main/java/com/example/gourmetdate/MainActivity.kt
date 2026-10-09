@@ -78,7 +78,7 @@ data class Proveedor(
     val telefono: String,
     val correo: String,
     val direccion: String,
-    val estado: String, // "Activo" o "Inactivo"
+    val estado: String,
     val notas: String
 )
 
@@ -243,10 +243,6 @@ fun RetroMermasApp() {
     }
 }
 
-// =====================================================================
-// MÓDULO DE PROVEEDORES (DISEÑO FIEL A TUS REFERENCIAS)
-// =====================================================================
-
 @Composable
 fun ProveedoresFormularioRetro(
     listaProveedores: MutableList<Proveedor>,
@@ -280,7 +276,6 @@ fun ProveedoresFormularioRetro(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // --- BLOQUE 1: NUEVO PROVEEDOR ---
         item {
             Box(
                 modifier = Modifier
@@ -294,7 +289,6 @@ fun ProveedoresFormularioRetro(
                         .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
                         .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
                 ) {
-                    // Header Azul
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -357,7 +351,6 @@ fun ProveedoresFormularioRetro(
                             placeholderText = "ej. Av. Reforma 123, CDMX"
                         )
 
-                        // Selector de Estado
                         Column {
                             Text("Estado", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.padding(bottom = 4.dp))
                             Box(modifier = Modifier.fillMaxWidth()) {
@@ -382,7 +375,6 @@ fun ProveedoresFormularioRetro(
                             }
                         }
 
-                        // Campo Notas
                         Column {
                             Text("Notas", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.padding(bottom = 4.dp))
                             Box(
@@ -443,7 +435,6 @@ fun ProveedoresFormularioRetro(
             }
         }
 
-        // --- BLOQUE 2: DIRECTORIO (X) ---
         item {
             Box(
                 modifier = Modifier
@@ -457,7 +448,6 @@ fun ProveedoresFormularioRetro(
                         .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
                         .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
                 ) {
-                    // Header Azul
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -490,7 +480,6 @@ fun ProveedoresFormularioRetro(
                             placeholderText = "ej. Distribuidora"
                         )
 
-                        // Filtro por Estado
                         Column {
                             Text("Filtrar por estado", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.padding(bottom = 4.dp))
                             Box(modifier = Modifier.fillMaxWidth()) {
@@ -578,10 +567,6 @@ fun ProveedoresFormularioRetro(
         }
     }
 }
-
-// =====================================================================
-// MÓDULO CATÁLOGO DE INGREDIENTES
-// =====================================================================
 
 @Composable
 fun CatalogoIngredientesRetro(
@@ -961,10 +946,6 @@ fun SeccionEnConstruccion(seccion: Seccion) {
         }
     }
 }
-
-// =====================================================================
-// MÓDULO DE RECETAS
-// =====================================================================
 
 @Composable
 fun RecetasFormularioRetro(
@@ -1354,10 +1335,6 @@ fun RecetasFormularioRetro(
     }
 }
 
-// =====================================================================
-// MÓDULO DE MERMAS E INGREDIENTES
-// =====================================================================
-
 @Composable
 fun IngredientesFormularioRetro(
     listaIngredientes: MutableList<Ingrediente>,
@@ -1682,10 +1659,6 @@ fun IngredientesFormularioRetro(
     }
 }
 
-// =====================================================================
-// COMPONENTES RETRO PERSONALIZADOS
-// =====================================================================
-
 @Composable
 fun RetroInputField(
     label: String,
@@ -1919,4 +1892,4 @@ fun DockItem(
             color = Color.Black
         )
     }
-}
+} 
