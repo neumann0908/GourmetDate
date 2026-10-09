@@ -28,7 +28,6 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.util.Locale
 
-// Enum para controlar la navegación interactiva entre secciones
 enum class Seccion(val titulo: String, val ruta: String, val icono: String) {
     ESCRITORIO("Escritorio Principal", "/C/GOURMETDATE/DESKTOP/", "🖥️"),
     INGREDIENTES("Catálogo de Ingredientes", "/C/GOURMETDATE/INGREDIENTES/", "📁"),
@@ -38,20 +37,20 @@ enum class Seccion(val titulo: String, val ruta: String, val icono: String) {
     MERMAS("Ingredientes & Mermas", "/C/GOURMETDATE/MERMAS/", "🧪")
 }
 
-// Modelo de datos para ingredientes
 data class Ingrediente(
     val id: String = java.util.UUID.randomUUID().toString(),
     val nombre: String,
+    val categoria: String = "General",
     val costo: Double,
     val pesoBruto: Double,
     val pesoNeto: Double,
     val unidad: String,
+    val proveedor: String = "Sin proveedor",
     val rendimiento: Double,
     val costoReal: Double,
     val analisisResumen: String
 )
 
-// Modelo de datos para ingrediente dentro de una receta
 data class IngredienteReceta(
     val ingredienteId: String,
     val nombre: String,
@@ -60,7 +59,6 @@ data class IngredienteReceta(
     val costoCalculado: Double
 )
 
-// Modelo de datos para recetas
 data class Receta(
     val id: String = java.util.UUID.randomUUID().toString(),
     val nombre: String,
@@ -91,13 +89,12 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RetroMermasApp() {
-    var seccionActual by remember { mutableStateOf(Seccion.RECETAS) }
+    var seccionActual by remember { mutableStateOf(Seccion.INGREDIENTES) }
 
     val context = LocalContext.current
     val sharedPreferences = remember { context.getSharedPreferences("gourmetdate_prefs", Context.MODE_PRIVATE) }
     val gson = remember { Gson() }
 
-    // Cargar la lista de ingredientes guardados
     val listaIngredientes = remember {
         val json = sharedPreferences.getString("lista_ingredientes", null)
         val listType = object : TypeToken<ArrayList<Ingrediente>>() {}.type
@@ -107,7 +104,6 @@ fun RetroMermasApp() {
         }
     }
 
-    // Cargar la lista de recetas guardadas
     val listaRecetas = remember {
         val json = sharedPreferences.getString("lista_recetas", null)
         val listType = object : TypeToken<ArrayList<Receta>>() {}.type
@@ -132,7 +128,6 @@ fun RetroMermasApp() {
             .fillMaxSize()
             .background(Color(0xFFE5DFEE))
     ) {
-        // --- 1. Header Superior Dinámico ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -156,7 +151,6 @@ fun RetroMermasApp() {
             )
         }
 
-        // --- 2. Cuerpo de la Ventana Principal ---
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -168,7 +162,6 @@ fun RetroMermasApp() {
                     .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(10.dp))
                     .border(2.dp, Color.Black, shape = RoundedCornerShape(10.dp))
             ) {
-                // Barra de título
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -193,8 +186,12 @@ fun RetroMermasApp() {
                     }
                 }
 
-                // Cambio dinámico de pantalla según sección
                 when (seccionActual) {
+                    Seccion.INGREDIENTES -> CatalogoIngredientesRetro(
+                        listaIngredientes = listaIngredientes,
+                        onGuardarCambios = { guardarIngredientes() },
+                        onIrAMermas = { seccionActual = Seccion.MERMAS }
+                    )
                     Seccion.MERMAS -> IngredientesFormularioRetro(
                         listaIngredientes = listaIngredientes,
                         onGuardarCambios = { guardarIngredientes() }
@@ -209,11 +206,365 @@ fun RetroMermasApp() {
             }
         }
 
-        // --- 3. Dock Inferior Interactivo ---
         RetroBottomDock(
             seccionActual = seccionActual,
             onSeccionSeleccionada = { seccionActual = it }
         )
+    }
+}
+
+// =====================================================================
+// MÓDULO CATÁLOGO DE INGREDIENTES (DISEÑO FIEL A REFERENCIAS)
+// =====================================================================
+
+@Composable
+fun CatalogoIngredientesRetro(
+    listaIngredientes: MutableList<Ingrediente>,
+    onGuardarCambios: () -> Unit,
+    onIrAMermas: () -> Unit
+) {
+    var nombreIngrediente by remember { mutableStateOf("") }
+    var categoria by remember { mutableStateOf("") }
+    var unidadSeleccionada by remember { mutableStateOf("kg") }
+    var menuUnidadesExpandido by remember { mutableStateOf(false) }
+    var costoCompra by remember { mutableStateOf("") }
+    var pesoBruto by remember { mutableStateOf("") }
+    var pesoNeto by remember { mutableStateOf("") }
+    var proveedorSeleccionado by remember { mutableStateOf("Sin proveedor") }
+    var menuProveedorExpandido by remember { mutableStateOf(false) }
+
+    var busquedaNombre by remember { mutableStateOf("") }
+    var filtroCategoria by remember { mutableStateOf("Todas las categorías") }
+    var menuFiltroCategoriaExpandido by remember { mutableStateOf(false) }
+
+    val unidadesList = listOf("kg", "g", "lb", "oz", "ml", "L")
+    val proveedoresList = listOf("Sin proveedor", "Distribuidora Central", "Mercado Local", "Proveedor Carnes")
+
+    val categoriasDisponibles = listOf("Todas las categorías") + listaIngredientes.map { it.categoria }.distinct()
+
+    val ingredientesFiltrados = listaIngredientes.filter { ing ->
+        val coincideNombre = ing.nombre.contains(busquedaNombre, ignoreCase = true)
+        val coincideCategoria = filtroCategoria == "Todas las categorías" || ing.categoria.equals(filtroCategoria, ignoreCase = true)
+        coincideNombre && coincideCategoria
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // --- BLOQUE 1: NUEVO INGREDIENTE ---
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black, shape = RoundedCornerShape(8.dp))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
+                        .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    // Header Azul del Formulario
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0072C6), shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Nuevo ingrediente",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(8.dp).background(Color.White, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color.LightGray, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFE81123), RoundedCornerShape(50)))
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        RetroInputField(
+                            label = "Nombre del ingrediente",
+                            value = nombreIngrediente,
+                            onValueChange = { nombreIngrediente = it },
+                            placeholderText = "ej. Aguacate Hass"
+                        )
+
+                        RetroInputField(
+                            label = "Categoría",
+                            value = categoria,
+                            onValueChange = { categoria = it },
+                            placeholderText = "ej. Frutas y verduras"
+                        )
+
+                        // Selector de Unidad
+                        Column {
+                            Text("Unidad", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.padding(bottom = 4.dp))
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                RetroButtonSmall(
+                                    text = "$unidadSeleccionada   ▼",
+                                    onClick = { menuUnidadesExpandido = true }
+                                )
+                                DropdownMenu(
+                                    expanded = menuUnidadesExpandido,
+                                    onDismissRequest = { menuUnidadesExpandido = false }
+                                ) {
+                                    unidadesList.forEach { u ->
+                                        DropdownMenuItem(
+                                            text = { Text(u) },
+                                            onClick = {
+                                                unidadSeleccionada = u
+                                                menuUnidadesExpandido = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        RetroInputField(
+                            label = "Costo de compra ($)",
+                            value = costoCompra,
+                            onValueChange = { costoCompra = it },
+                            placeholderText = "0.00",
+                            keyboardType = KeyboardType.Number
+                        )
+
+                        RetroInputField(
+                            label = "Peso bruto ($unidadSeleccionada)",
+                            value = pesoBruto,
+                            onValueChange = { pesoBruto = it },
+                            placeholderText = "0.000",
+                            keyboardType = KeyboardType.Number
+                        )
+
+                        RetroInputField(
+                            label = "Peso neto ($unidadSeleccionada)",
+                            value = pesoNeto,
+                            onValueChange = { pesoNeto = it },
+                            placeholderText = "0.000",
+                            keyboardType = KeyboardType.Number
+                        )
+
+                        // Selector de Proveedor
+                        Column {
+                            Text("Proveedor (opcional)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.padding(bottom = 4.dp))
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                RetroButtonSmall(
+                                    text = "$proveedorSeleccionado   ▼",
+                                    onClick = { menuProveedorExpandido = true }
+                                )
+                                DropdownMenu(
+                                    expanded = menuProveedorExpandido,
+                                    onDismissRequest = { menuProveedorExpandido = false }
+                                ) {
+                                    proveedoresList.forEach { p ->
+                                        DropdownMenuItem(
+                                            text = { Text(p) },
+                                            onClick = {
+                                                proveedorSeleccionado = p
+                                                menuProveedorExpandido = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        RetroButton(
+                            text = "Agregar ingrediente",
+                            onClick = {
+                                val c = costoCompra.toDoubleOrNull() ?: 0.0
+                                val pb = pesoBruto.toDoubleOrNull() ?: 0.0
+                                val pn = pesoNeto.toDoubleOrNull() ?: 0.0
+
+                                if (nombreIngrediente.isNotBlank() && pb > 0 && pn > 0) {
+                                    val rend = (pn / pb) * 100
+                                    val cReal = c / pn
+                                    val mermaPeso = pb - pn
+                                    val pctMerma = 100.0 - rend
+
+                                    val analisis = String.format(
+                                        Locale.US,
+                                        "Merma: %.2f %s (%.1f%%). Costo real: $%.2f / %s",
+                                        mermaPeso, unidadSeleccionada, pctMerma, cReal, unidadSeleccionada
+                                    )
+
+                                    listaIngredientes.add(
+                                        Ingrediente(
+                                            nombre = nombreIngrediente,
+                                            categoria = if (categoria.isBlank()) "General" else categoria,
+                                            costo = c,
+                                            pesoBruto = pb,
+                                            pesoNeto = pn,
+                                            unidad = unidadSeleccionada,
+                                            proveedor = proveedorSeleccionado,
+                                            rendimiento = rend,
+                                            costoReal = cReal,
+                                            analisisResumen = analisis
+                                        )
+                                    )
+                                    onGuardarCambios()
+
+                                    nombreIngrediente = ""
+                                    categoria = ""
+                                    costoCompra = ""
+                                    pesoBruto = ""
+                                    pesoNeto = ""
+                                    proveedorSeleccionado = "Sin proveedor"
+                                }
+                            },
+                            backgroundColor = Color(0xFF6B21A8)
+                        )
+                    }
+                }
+            }
+        }
+
+        // --- BLOQUE 2: INVENTARIO (X) ---
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black, shape = RoundedCornerShape(8.dp))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
+                        .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    // Header Azul del Inventario
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0072C6), shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Inventario (${listaIngredientes.size})",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(8.dp).background(Color.White, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color.LightGray, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFE81123), RoundedCornerShape(50)))
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        RetroInputField(
+                            label = "Buscar por nombre",
+                            value = busquedaNombre,
+                            onValueChange = { busquedaNombre = it },
+                            placeholderText = "ej. Aguacate"
+                        )
+
+                        // Filtro por Categoría
+                        Column {
+                            Text("Filtrar por categoría", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.padding(bottom = 4.dp))
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                RetroButtonSmall(
+                                    text = "$filtroCategoria   ▼",
+                                    onClick = { menuFiltroCategoriaExpandido = true }
+                                )
+                                DropdownMenu(
+                                    expanded = menuFiltroCategoriaExpandido,
+                                    onDismissRequest = { menuFiltroCategoriaExpandido = false }
+                                ) {
+                                    categoriasDisponibles.forEach { cat ->
+                                        DropdownMenuItem(
+                                            text = { Text(cat) },
+                                            onClick = {
+                                                filtroCategoria = cat
+                                                menuFiltroCategoriaExpandido = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Divider(color = Color.LightGray, thickness = 1.dp, modifier = Modifier.padding(vertical = 4.dp))
+
+                        if (ingredientesFiltrados.isEmpty()) {
+                            Text(
+                                text = if (listaIngredientes.isEmpty()) "No hay ingredientes registrados. Agrega el primero con el formulario de arriba." else "No se encontraron ingredientes para esa búsqueda.",
+                                fontSize = 12.sp,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        } else {
+                            ingredientesFiltrados.forEach { ing ->
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color.Black, shape = RoundedCornerShape(6.dp))
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .offset(x = (-2).dp, y = (-2).dp)
+                                            .background(Color(0xFFFEF3C7), shape = RoundedCornerShape(6.dp))
+                                            .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
+                                            .padding(10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(ing.nombre, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            Text("Categoría: ${ing.categoria} | Prov: ${ing.proveedor}", fontSize = 11.sp, color = Color.DarkGray)
+                                            Text(
+                                                "Costo Real: $${String.format(Locale.US, "%.2f", ing.costoReal)} / ${ing.unidad} (Rend. ${String.format(Locale.US, "%.1f%%", ing.rendimiento)})",
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF6B21A8),
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                        IconButton(onClick = {
+                                            listaIngredientes.remove(ing)
+                                            onGuardarCambios()
+                                        }) {
+                                            Text("🗑️", fontSize = 14.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // Botón Amarillo Retro para abrir Mermas
+                        RetroButton(
+                            text = "Abrir Ingredientes & Mermas",
+                            onClick = onIrAMermas,
+                            backgroundColor = Color(0xFFFFD000)
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -243,7 +594,7 @@ fun SeccionEnConstruccion(seccion: Seccion) {
                     .padding(12.dp)
             ) {
                 Text(
-                    text = "⚙️ Módulo en desarrollo. Toca RECETAS o MERMAS abajo para navegar.",
+                    text = "⚙️ Módulo en desarrollo. Usa el Dock inferior para navegar.",
                     fontSize = 12.sp,
                     color = Color.DarkGray
                 )
@@ -253,7 +604,7 @@ fun SeccionEnConstruccion(seccion: Seccion) {
 }
 
 // =====================================================================
-// MÓDULO DE RECETAS (BASADO EN TU REFERENCIA)
+// MÓDULO DE RECETAS
 // =====================================================================
 
 @Composable
@@ -268,15 +619,12 @@ fun RecetasFormularioRetro(
     var tiempo by remember { mutableStateOf("30") }
     var descripcion by remember { mutableStateOf("") }
 
-    // Estado para ingredientes seleccionados en la receta activa
     val ingredientesAgregados = remember { mutableStateListOf<IngredienteReceta>() }
     var ingredienteSeleccionado by remember { mutableStateOf<Ingrediente?>(null) }
     var menuIngredientesExpandido by remember { mutableStateOf(false) }
     var cantidadIngrediente by remember { mutableStateOf("1") }
 
-    // Filtros de búsqueda en el recetario
     var busquedaNombre by remember { mutableStateOf("") }
-    var filtroCategoria by remember { mutableStateOf("Todas") }
 
     val costoTotalReceta = ingredientesAgregados.sumOf { it.costoCalculado }
     val numPorciones = porciones.toIntOrNull() ?: 1
@@ -368,7 +716,6 @@ fun RecetasFormularioRetro(
             }
         }
 
-        // Sub-bloque: Ingredientes de la receta
         item {
             Box(
                 modifier = Modifier
@@ -483,7 +830,6 @@ fun RecetasFormularioRetro(
             }
         }
 
-        // Resumen de costos
         if (ingredientesAgregados.isNotEmpty()) {
             item {
                 Box(
@@ -548,7 +894,6 @@ fun RecetasFormularioRetro(
             )
         }
 
-        // --- BLOQUE INFERIOR: RECETARIO (X) ---
         item {
             Spacer(modifier = Modifier.height(12.dp))
             Box(
@@ -563,7 +908,6 @@ fun RecetasFormularioRetro(
                         .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
                         .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
                 ) {
-                    // Header Recetario
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
