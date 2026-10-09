@@ -51,6 +51,28 @@ data class Ingrediente(
     val analisisResumen: String
 )
 
+// Modelo de datos para ingrediente dentro de una receta
+data class IngredienteReceta(
+    val ingredienteId: String,
+    val nombre: String,
+    val cantidad: Double,
+    val unidad: String,
+    val costoCalculado: Double
+)
+
+// Modelo de datos para recetas
+data class Receta(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val nombre: String,
+    val categoria: String,
+    val porciones: Int,
+    val tiempoMinutos: Int,
+    val descripcion: String,
+    val ingredientes: List<IngredienteReceta>,
+    val costoTotal: Double,
+    val costoPorPorcion: Double
+)
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,13 +91,13 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RetroMermasApp() {
-    var seccionActual by remember { mutableStateOf(Seccion.MERMAS) }
+    var seccionActual by remember { mutableStateOf(Seccion.RECETAS) }
 
     val context = LocalContext.current
     val sharedPreferences = remember { context.getSharedPreferences("gourmetdate_prefs", Context.MODE_PRIVATE) }
     val gson = remember { Gson() }
 
-    // Cargar la lista guardada desde el almacenamiento local al iniciar la app
+    // Cargar la lista de ingredientes guardados
     val listaIngredientes = remember {
         val json = sharedPreferences.getString("lista_ingredientes", null)
         val listType = object : TypeToken<ArrayList<Ingrediente>>() {}.type
@@ -85,10 +107,24 @@ fun RetroMermasApp() {
         }
     }
 
-    // Función auxiliar para guardar automáticamente la lista
+    // Cargar la lista de recetas guardadas
+    val listaRecetas = remember {
+        val json = sharedPreferences.getString("lista_recetas", null)
+        val listType = object : TypeToken<ArrayList<Receta>>() {}.type
+        val savedList: ArrayList<Receta>? = if (json != null) gson.fromJson(json, listType) else null
+        mutableStateListOf<Receta>().apply {
+            if (savedList != null) addAll(savedList)
+        }
+    }
+
     fun guardarIngredientes() {
         val json = gson.toJson(listaIngredientes.toList())
         sharedPreferences.edit().putString("lista_ingredientes", json).apply()
+    }
+
+    fun guardarRecetas() {
+        val json = gson.toJson(listaRecetas.toList())
+        sharedPreferences.edit().putString("lista_recetas", json).apply()
     }
 
     Column(
@@ -96,7 +132,7 @@ fun RetroMermasApp() {
             .fillMaxSize()
             .background(Color(0xFFE5DFEE))
     ) {
-        // --- 1. Ruta / Header Superior Dinámico ---
+        // --- 1. Header Superior Dinámico ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -151,21 +187,9 @@ fun RetroMermasApp() {
                         fontSize = 13.sp
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .background(Color.White, RoundedCornerShape(50))
-                        )
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .background(Color.LightGray, RoundedCornerShape(50))
-                        )
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .background(Color(0xFFE81123), RoundedCornerShape(50))
-                        )
+                        Box(modifier = Modifier.size(10.dp).background(Color.White, RoundedCornerShape(50)))
+                        Box(modifier = Modifier.size(10.dp).background(Color.LightGray, RoundedCornerShape(50)))
+                        Box(modifier = Modifier.size(10.dp).background(Color(0xFFE81123), RoundedCornerShape(50)))
                     }
                 }
 
@@ -174,6 +198,11 @@ fun RetroMermasApp() {
                     Seccion.MERMAS -> IngredientesFormularioRetro(
                         listaIngredientes = listaIngredientes,
                         onGuardarCambios = { guardarIngredientes() }
+                    )
+                    Seccion.RECETAS -> RecetasFormularioRetro(
+                        listaIngredientes = listaIngredientes,
+                        listaRecetas = listaRecetas,
+                        onGuardarRecetas = { guardarRecetas() }
                     )
                     else -> SeccionEnConstruccion(seccion = seccionActual)
                 }
@@ -214,7 +243,7 @@ fun SeccionEnConstruccion(seccion: Seccion) {
                     .padding(12.dp)
             ) {
                 Text(
-                    text = "⚙️ Módulo en desarrollo. Toca MERMAS abajo para regresar.",
+                    text = "⚙️ Módulo en desarrollo. Toca RECETAS o MERMAS abajo para navegar.",
                     fontSize = 12.sp,
                     color = Color.DarkGray
                 )
@@ -222,6 +251,409 @@ fun SeccionEnConstruccion(seccion: Seccion) {
         }
     }
 }
+
+// =====================================================================
+// MÓDULO DE RECETAS (BASADO EN TU REFERENCIA)
+// =====================================================================
+
+@Composable
+fun RecetasFormularioRetro(
+    listaIngredientes: List<Ingrediente>,
+    listaRecetas: MutableList<Receta>,
+    onGuardarRecetas: () -> Unit
+) {
+    var nombreReceta by remember { mutableStateOf("") }
+    var categoria by remember { mutableStateOf("") }
+    var porciones by remember { mutableStateOf("4") }
+    var tiempo by remember { mutableStateOf("30") }
+    var descripcion by remember { mutableStateOf("") }
+
+    // Estado para ingredientes seleccionados en la receta activa
+    val ingredientesAgregados = remember { mutableStateListOf<IngredienteReceta>() }
+    var ingredienteSeleccionado by remember { mutableStateOf<Ingrediente?>(null) }
+    var menuIngredientesExpandido by remember { mutableStateOf(false) }
+    var cantidadIngrediente by remember { mutableStateOf("1") }
+
+    // Filtros de búsqueda en el recetario
+    var busquedaNombre by remember { mutableStateOf("") }
+    var filtroCategoria by remember { mutableStateOf("Todas") }
+
+    val costoTotalReceta = ingredientesAgregados.sumOf { it.costoCalculado }
+    val numPorciones = porciones.toIntOrNull() ?: 1
+    val costoPorPorcion = if (numPorciones > 0) costoTotalReceta / numPorciones else 0.0
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text(
+                text = "Nueva receta",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = Color.Black
+            )
+        }
+
+        item {
+            RetroInputField(
+                label = "Nombre de la receta",
+                value = nombreReceta,
+                onValueChange = { nombreReceta = it },
+                placeholderText = "ej. Guacamole de la casa"
+            )
+        }
+
+        item {
+            RetroInputField(
+                label = "Categoría",
+                value = categoria,
+                onValueChange = { categoria = it },
+                placeholderText = "ej. Entradas"
+            )
+        }
+
+        item {
+            RetroInputField(
+                label = "Porciones",
+                value = porciones,
+                onValueChange = { porciones = it },
+                placeholderText = "4",
+                keyboardType = KeyboardType.Number
+            )
+        }
+
+        item {
+            RetroInputField(
+                label = "Tiempo (min)",
+                value = tiempo,
+                onValueChange = { tiempo = it },
+                placeholderText = "30",
+                keyboardType = KeyboardType.Number
+            )
+        }
+
+        item {
+            Column {
+                Text(
+                    text = "Descripción / preparación",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .background(Color.Black, shape = RoundedCornerShape(6.dp))
+                ) {
+                    OutlinedTextField(
+                        value = descripcion,
+                        onValueChange = { descripcion = it },
+                        placeholder = { Text("Describe el procedimiento de la receta...", color = Color.Gray, fontSize = 13.sp) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color.Black,
+                            unfocusedBorderColor = Color.Black
+                        ),
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .offset(x = (-2).dp, y = (-2).dp)
+                            .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(6.dp))
+                    )
+                }
+            }
+        }
+
+        // Sub-bloque: Ingredientes de la receta
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black, shape = RoundedCornerShape(8.dp))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
+                        .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Ingredientes de la receta",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+
+                    Text(text = "Ingrediente", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        RetroButtonSmall(
+                            text = ingredienteSeleccionado?.nombre ?: "Selecciona...",
+                            onClick = { menuIngredientesExpandido = true }
+                        )
+                        DropdownMenu(
+                            expanded = menuIngredientesExpandido,
+                            onDismissRequest = { menuIngredientesExpandido = false }
+                        ) {
+                            if (listaIngredientes.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("No hay insumos. Regístralos en MERMAS.") },
+                                    onClick = { menuIngredientesExpandido = false }
+                                )
+                            } else {
+                                listaIngredientes.forEach { ing ->
+                                    DropdownMenuItem(
+                                        text = { Text("${ing.nombre} ($${String.format(Locale.US, "%.2f", ing.costoReal)}/${ing.unidad})") },
+                                        onClick = {
+                                            ingredienteSeleccionado = ing
+                                            menuIngredientesExpandido = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    RetroInputField(
+                        label = "Cantidad",
+                        value = cantidadIngrediente,
+                        onValueChange = { cantidadIngrediente = it },
+                        placeholderText = "1",
+                        keyboardType = KeyboardType.Number
+                    )
+
+                    RetroButton(
+                        text = "Añadir",
+                        onClick = {
+                            val ing = ingredienteSeleccionado
+                            val cant = cantidadIngrediente.toDoubleOrNull() ?: 0.0
+                            if (ing != null && cant > 0) {
+                                val costoCalc = cant * ing.costoReal
+                                ingredientesAgregados.add(
+                                    IngredienteReceta(
+                                        ingredienteId = ing.id,
+                                        nombre = ing.nombre,
+                                        cantidad = cant,
+                                        unidad = ing.unidad,
+                                        costoCalculado = costoCalc
+                                    )
+                                )
+                                ingredienteSeleccionado = null
+                                cantidadIngrediente = "1"
+                            }
+                        },
+                        backgroundColor = Color(0xFFFACC15)
+                    )
+
+                    if (ingredientesAgregados.isEmpty()) {
+                        Text(
+                            text = "Añade al menos un ingrediente para guardar la receta.",
+                            fontSize = 11.sp,
+                            color = Color.Gray
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(text = "Ingredientes agregados:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        ingredientesAgregados.forEach { item ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "• ${item.nombre}: ${item.cantidad} ${item.unidad} ($${String.format(Locale.US, "%.2f", item.costoCalculado)})",
+                                    fontSize = 11.sp
+                                )
+                                IconButton(
+                                    onClick = { ingredientesAgregados.remove(item) },
+                                    modifier = Modifier.size(20.dp)
+                                ) {
+                                    Text("🗑️", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Resumen de costos
+        if (ingredientesAgregados.isNotEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset(x = (-2).dp, y = (-2).dp)
+                            .background(Color(0xFFE0E7FF), shape = RoundedCornerShape(8.dp))
+                            .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text("💡 Análisis de Costos", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Costo Total Receta: $${String.format(Locale.US, "%.2f", costoTotalReceta)}", fontSize = 12.sp)
+                        Text(
+                            "Costo Por Porción ($numPorciones): $${String.format(Locale.US, "%.2f", costoPorPorcion)}",
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF6B21A8),
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            "Precio Venta Sugerido (30% costo): $${String.format(Locale.US, "%.2f", costoPorPorcion / 0.30)}",
+                            fontSize = 11.sp,
+                            color = Color.DarkGray
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            RetroButton(
+                text = "Crear receta",
+                onClick = {
+                    if (nombreReceta.isNotBlank() && ingredientesAgregados.isNotEmpty()) {
+                        listaRecetas.add(
+                            Receta(
+                                nombre = nombreReceta,
+                                categoria = if (categoria.isBlank()) "General" else categoria,
+                                porciones = numPorciones,
+                                tiempoMinutos = tiempo.toIntOrNull() ?: 0,
+                                descripcion = descripcion,
+                                ingredientes = ingredientesAgregados.toList(),
+                                costoTotal = costoTotalReceta,
+                                costoPorPorcion = costoPorPorcion
+                            )
+                        )
+                        onGuardarRecetas()
+
+                        nombreReceta = ""
+                        categoria = ""
+                        porciones = "4"
+                        tiempo = "30"
+                        descripcion = ""
+                        ingredientesAgregados.clear()
+                    }
+                },
+                backgroundColor = Color(0xFF6B21A8)
+            )
+        }
+
+        // --- BLOQUE INFERIOR: RECETARIO (X) ---
+        item {
+            Spacer(modifier = Modifier.height(12.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black, shape = RoundedCornerShape(8.dp))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
+                        .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    // Header Recetario
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0072C6), shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Recetario (${listaRecetas.size})",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(8.dp).background(Color.White, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color.LightGray, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFE81123), RoundedCornerShape(50)))
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        RetroInputField(
+                            label = "Buscar por nombre",
+                            value = busquedaNombre,
+                            onValueChange = { busquedaNombre = it },
+                            placeholderText = "ej. Guacamole"
+                        )
+
+                        val recetasFiltradas = listaRecetas.filter {
+                            it.nombre.contains(busquedaNombre, ignoreCase = true)
+                        }
+
+                        if (recetasFiltradas.isEmpty()) {
+                            Text(
+                                text = "Todavía no hay recetas. Crea la primera con el formulario de arriba.",
+                                fontSize = 12.sp,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        } else {
+                            recetasFiltradas.forEach { rec ->
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color.Black, shape = RoundedCornerShape(6.dp))
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .offset(x = (-2).dp, y = (-2).dp)
+                                            .background(Color(0xFFFEF3C7), shape = RoundedCornerShape(6.dp))
+                                            .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
+                                            .padding(10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(rec.nombre, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            Text("Categoría: ${rec.categoria} | ${rec.porciones} porciones", fontSize = 11.sp, color = Color.DarkGray)
+                                            Text(
+                                                "Costo Total: $${String.format(Locale.US, "%.2f", rec.costoTotal)} ($${String.format(Locale.US, "%.2f", rec.costoPorPorcion)}/porción)",
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF6B21A8),
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                        IconButton(onClick = {
+                                            listaRecetas.remove(rec)
+                                            onGuardarRecetas()
+                                        }) {
+                                            Text("🗑️", fontSize = 14.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// =====================================================================
+// MÓDULO DE MERMAS E INGREDIENTES
+// =====================================================================
 
 @Composable
 fun IngredientesFormularioRetro(
