@@ -16,8 +16,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -29,7 +32,7 @@ import com.google.gson.reflect.TypeToken
 import java.util.Locale
 
 enum class Seccion(val titulo: String, val ruta: String, val icono: String) {
-    ESCRITORIO("Escritorio Principal", "/C/GOURMETDATE/DESKTOP/", "🖥️"),
+    ESCRITORIO("Escritorio Principal", "/C/GOURMETDATE/ESCRITORIO/", "🖥️"),
     INGREDIENTES("Catálogo de Ingredientes", "/C/GOURMETDATE/INGREDIENTES/", "📁"),
     RECETAS("Gestión de Recetas", "/C/GOURMETDATE/RECETAS/", "📄"),
     PROVEEDORES("Directorio de Proveedores", "/C/GOURMETDATE/PROVEEDORES/", "📦"),
@@ -94,7 +97,7 @@ data class OrdenCompra(
     val id: String = java.util.UUID.randomUUID().toString(),
     val folio: String,
     val proveedorNombre: String,
-    val estado: String, // "BORRADOR", "ENVIADA", "RECIBIDA"
+    val estado: String,
     val items: List<ItemOrden>,
     val total: Double
 )
@@ -117,7 +120,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RetroMermasApp() {
-    var seccionActual by remember { mutableStateOf(Seccion.ORDENES) }
+    var seccionActual by remember { mutableStateOf(Seccion.ESCRITORIO) }
 
     val context = LocalContext.current
     val sharedPreferences = remember { context.getSharedPreferences("gourmetdate_prefs", Context.MODE_PRIVATE) }
@@ -230,7 +233,7 @@ fun RetroMermasApp() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = seccionActual.titulo,
+                        text = if (seccionActual == Seccion.ESCRITORIO) "Escritorio — GourmetDate" else seccionActual.titulo,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp
@@ -243,6 +246,15 @@ fun RetroMermasApp() {
                 }
 
                 when (seccionActual) {
+                    Seccion.ESCRITORIO -> EscritorioPrincipalRetro(
+                        totalIngredientes = listaIngredientes.size,
+                        totalRecetas = listaRecetas.size,
+                        totalProveedoresActivos = listaProveedores.count { it.estado == "Activo" },
+                        totalOrdenesAbiertas = listaOrdenes.count { it.estado != "RECIBIDA" },
+                        listaRecetas = listaRecetas,
+                        listaOrdenes = listaOrdenes,
+                        onNavegarSeccion = { seccionActual = it }
+                    )
                     Seccion.ORDENES -> OrdenesFormularioRetro(
                         listaOrdenes = listaOrdenes,
                         listaProveedores = listaProveedores,
@@ -268,7 +280,6 @@ fun RetroMermasApp() {
                         listaRecetas = listaRecetas,
                         onGuardarRecetas = { guardarRecetas() }
                     )
-                    else -> SeccionEnConstruccion(seccion = seccionActual)
                 }
             }
         }
@@ -281,7 +292,463 @@ fun RetroMermasApp() {
 }
 
 // =====================================================================
-// MÓDULO DE ÓRDENES DE COMPRA (DISEÑO FIEL A TUS REFERENCIAS)
+// MÓDULO ESCRITORIO PRINCIPAL (RÉPLICA EXACTA DE LAS 3 IMÁGENES)
+// =====================================================================
+
+@Composable
+fun EscritorioPrincipalRetro(
+    totalIngredientes: Int,
+    totalRecetas: Int,
+    totalProveedoresActivos: Int,
+    totalOrdenesAbiertas: Int,
+    listaRecetas: List<Receta>,
+    listaOrdenes: List<OrdenCompra>,
+    onNavegarSeccion: (Seccion) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // --- VENTANA 1: PANEL DE CONTROL ---
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black, shape = RoundedCornerShape(8.dp))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
+                        .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Encabezado
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(text = "🍽️", fontSize = 28.sp)
+                        Column {
+                            Text(
+                                text = "Panel de control",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Color.Black
+                            )
+                            Text(
+                                text = "Resumen operativo de tu cocina profesional.",
+                                fontSize = 11.sp,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+
+                    // Línea divisoria punteada
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .drawWithContent {
+                                drawPath(
+                                    path = androidx.compose.ui.graphics.Path().apply {
+                                        moveTo(0f, 0f)
+                                        lineTo(size.width, 0f)
+                                    },
+                                    color = Color.Gray,
+                                    style = Stroke(
+                                        width = 2f,
+                                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                                    )
+                                )
+                            }
+                    )
+
+                    // Métricas Grid (2x2)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        MetricCard(
+                            count = totalIngredientes,
+                            label = "INGREDIENTES",
+                            modifier = Modifier.weight(1f)
+                        )
+                        MetricCard(
+                            count = totalRecetas,
+                            label = "RECETAS",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        MetricCard(
+                            count = totalProveedoresActivos,
+                            label = "PROVEEDORES ACTIVOS",
+                            modifier = Modifier.weight(1f)
+                        )
+                        MetricCard(
+                            count = totalOrdenesAbiertas,
+                            label = "ÓRDENES ABIERTAS",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    // Acciones Rápidas
+                    Text(
+                        text = "ACCIONES RÁPIDAS",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.DarkGray,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        QuickActionButton(
+                            colorSquare = Color(0xFFEAB308),
+                            label = "Nuevo ingrediente",
+                            onClick = { onNavegarSeccion(Seccion.INGREDIENTES) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        QuickActionButton(
+                            colorSquare = Color(0xFF0D9488),
+                            label = "Nueva receta",
+                            onClick = { onNavegarSeccion(Seccion.RECETAS) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(0.5f)) {
+                        QuickActionButton(
+                            colorSquare = Color(0xFFEF4444),
+                            label = "Nueva orden",
+                            onClick = { onNavegarSeccion(Seccion.ORDENES) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        }
+
+        // --- VENTANA 2: CARPETAS DEL SISTEMA ---
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black, shape = RoundedCornerShape(8.dp))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
+                        .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    // Header Azul
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0072C6), shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Carpetas del sistema",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(8.dp).background(Color.White, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color.LightGray, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFE81123), RoundedCornerShape(50)))
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            SystemFolderCard(
+                                folderColor = Color(0xFFEAB308),
+                                title = "INGREDIENTES",
+                                onClick = { onNavegarSeccion(Seccion.INGREDIENTES) },
+                                modifier = Modifier.weight(1f)
+                            )
+                            SystemFolderCard(
+                                folderColor = Color(0xFF0D9488),
+                                title = "RECETAS",
+                                onClick = { onNavegarSeccion(Seccion.RECETAS) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            SystemFolderCard(
+                                folderColor = Color(0xFFC026D3),
+                                title = "PROVEEDORES",
+                                onClick = { onNavegarSeccion(Seccion.PROVEEDORES) },
+                                modifier = Modifier.weight(1f)
+                            )
+                            SystemFolderCard(
+                                folderColor = Color(0xFFEF4444),
+                                title = "ÓRDENES",
+                                onClick = { onNavegarSeccion(Seccion.ORDENES) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Row(modifier = Modifier.fillMaxWidth(0.5f)) {
+                            SystemFolderCard(
+                                folderColor = Color(0xFFEAB308),
+                                title = "MERMAS",
+                                onClick = { onNavegarSeccion(Seccion.MERMAS) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- VENTANA 3: ACTIVIDAD RECIENTE ---
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black, shape = RoundedCornerShape(8.dp))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
+                        .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    // Header Azul
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0072C6), shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Actividad reciente",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(8.dp).background(Color.White, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color.LightGray, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFE81123), RoundedCornerShape(50)))
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp)
+                            .drawWithContent {
+                                drawContent()
+                                drawPath(
+                                    path = androidx.compose.ui.graphics.Path().apply {
+                                        addRoundRect(
+                                            androidx.compose.ui.geometry.RoundRect(
+                                                left = 0f,
+                                                top = 0f,
+                                                right = size.width,
+                                                bottom = size.height,
+                                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(16f, 16f)
+                                            )
+                                        )
+                                    },
+                                    color = Color.Gray,
+                                    style = Stroke(
+                                        width = 2f,
+                                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                                    )
+                                )
+                            }
+                            .padding(20.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (listaRecetas.isEmpty() && listaOrdenes.isEmpty()) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(text = "📫", fontSize = 28.sp)
+                                Text(
+                                    text = "Sin movimientos todavía",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = Color.Black
+                                )
+                                Text(
+                                    text = "Crea tu primera receta u orden de compra y aparecerán aquí como actividad reciente.",
+                                    fontSize = 11.sp,
+                                    color = Color.Gray,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (listaRecetas.isNotEmpty()) {
+                                    val ultimaReceta = listaRecetas.last()
+                                    Text("📄 Última receta: ${ultimaReceta.nombre} ($${String.format(Locale.US, "%.2f", ultimaReceta.costoPorPorcion)}/p)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                if (listaOrdenes.isNotEmpty()) {
+                                    val ultimaOrden = listaOrdenes.last()
+                                    Text("📋 Última orden: ${ultimaOrden.folio} - ${ultimaOrden.proveedorNombre} ($${String.format(Locale.US, "%.2f", ultimaOrden.total)})", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// --- SUB-COMPONENTES ESCRITORIO ---
+
+@Composable
+fun MetricCard(count: Int, label: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .height(80.dp)
+            .background(Color.Black, shape = RoundedCornerShape(6.dp))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset(x = (-2).dp, y = (-2).dp)
+                .background(Color(0xFFF3EFE0), shape = RoundedCornerShape(6.dp))
+                .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
+                .padding(10.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "$count",
+                fontWeight = FontWeight.Bold,
+                fontSize = 22.sp,
+                color = Color.Black
+            )
+            Text(
+                text = label,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF555555),
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
+}
+
+@Composable
+fun QuickActionButton(
+    colorSquare: Color,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(42.dp)
+            .background(Color.Black, shape = RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset(x = (-2).dp, y = (-2).dp)
+                .background(Color(0xFFE5E7EB), shape = RoundedCornerShape(6.dp))
+                .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(12.dp)
+                    .background(colorSquare)
+                    .border(1.dp, Color.Black)
+            )
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black
+            )
+        }
+    }
+}
+
+@Composable
+fun SystemFolderCard(
+    folderColor: Color,
+    title: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(95.dp)
+            .background(Color.Black, shape = RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset(x = (-2).dp, y = (-2).dp)
+                .background(Color(0xFFF3EFE0), shape = RoundedCornerShape(6.dp))
+                .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp)),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(42.dp)
+                    .height(28.dp)
+                    .background(folderColor, shape = RoundedCornerShape(2.dp))
+                    .border(1.dp, Color.Black, shape = RoundedCornerShape(2.dp))
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = title,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
+}
+
+// =====================================================================
+// OTROS MÓDULOS (ÓRDENES, PROVEEDORES, CATÁLOGO, RECETAS, MERMAS)
 // =====================================================================
 
 @Composable
@@ -295,7 +762,6 @@ fun OrdenesFormularioRetro(
     var filtroEstado by remember { mutableStateOf("TODAS") }
     var creandoNuevaOrden by remember { mutableStateOf(false) }
 
-    // Formulario de Nueva Orden
     var proveedorSeleccionado by remember { mutableStateOf<Proveedor?>(null) }
     var menuProvExpandido by remember { mutableStateOf(false) }
     var estadoOrdenSeleccionado by remember { mutableStateOf("BORRADOR") }
@@ -319,7 +785,6 @@ fun OrdenesFormularioRetro(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // --- BLOQUE PRINCIPAL ÓRDENES ---
         item {
             Box(
                 modifier = Modifier
@@ -333,7 +798,6 @@ fun OrdenesFormularioRetro(
                         .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
                         .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
                 ) {
-                    // Header Azul
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -372,7 +836,6 @@ fun OrdenesFormularioRetro(
                             backgroundColor = if (creandoNuevaOrden) Color(0xFFDC2626) else Color(0xFF6B21A8)
                         )
 
-                        // Filtros de Estado
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -471,7 +934,6 @@ fun OrdenesFormularioRetro(
             }
         }
 
-        // --- SUB-FORMULARIO CREAR ORDEN ---
         if (creandoNuevaOrden) {
             item {
                 Box(
@@ -490,7 +952,6 @@ fun OrdenesFormularioRetro(
                     ) {
                         Text("Crear Nueva Órden de Compra", fontWeight = FontWeight.Bold, fontSize = 14.sp)
 
-                        // Selector Proveedor
                         Column {
                             Text("Proveedor", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             Box(modifier = Modifier.fillMaxWidth()) {
@@ -522,7 +983,6 @@ fun OrdenesFormularioRetro(
                             }
                         }
 
-                        // Sub-bloque agregar items
                         Text("Agregar Insumos", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Box(modifier = Modifier.fillMaxWidth()) {
                             RetroButtonSmall(
@@ -635,10 +1095,6 @@ fun OrdenesFormularioRetro(
         }
     }
 }
-
-// =====================================================================
-// OTROS MÓDULOS DEL SISTEMA
-// =====================================================================
 
 @Composable
 fun ProveedoresFormularioRetro(
@@ -1304,41 +1760,6 @@ fun CatalogoIngredientesRetro(
                         )
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun SeccionEnConstruccion(seccion: Seccion) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(text = seccion.icono, fontSize = 48.sp)
-            Text(
-                text = seccion.titulo,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.Black
-            )
-            Box(
-                modifier = Modifier
-                    .background(Color(0xFFFEF3C7), shape = RoundedCornerShape(6.dp))
-                    .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
-                    .padding(12.dp)
-            ) {
-                Text(
-                    text = "⚙️ Módulo en desarrollo. Usa el Dock inferior para navegar.",
-                    fontSize = 12.sp,
-                    color = Color.DarkGray
-                )
             }
         }
     }
@@ -2057,7 +2478,7 @@ fun IngredientesFormularioRetro(
 }
 
 // =====================================================================
-// COMPONENTES RETRO PERSONALIZADOS
+// COMPONENTES RETRO REUTILIZABLES
 // =====================================================================
 
 @Composable
