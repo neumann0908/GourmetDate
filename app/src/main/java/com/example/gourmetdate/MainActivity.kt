@@ -1,5 +1,6 @@
 package com.example.gourmetdate
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,11 +18,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import java.util.Locale
 
 // Enum para controlar la navegación interactiva entre secciones
@@ -66,9 +70,26 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun RetroMermasApp() {
     var seccionActual by remember { mutableStateOf(Seccion.MERMAS) }
-    
-    // Lista elevada aquí para que los datos persistan aunque cambies de sección
-    val listaIngredientes = remember { mutableStateListOf<Ingrediente>() }
+
+    val context = LocalContext.current
+    val sharedPreferences = remember { context.getSharedPreferences("gourmetdate_prefs", Context.MODE_PRIVATE) }
+    val gson = remember { Gson() }
+
+    // Cargar la lista guardada desde el almacenamiento local al iniciar la app
+    val listaIngredientes = remember {
+        val json = sharedPreferences.getString("lista_ingredientes", null)
+        val listType = object : TypeToken<ArrayList<Ingrediente>>() {}.type
+        val savedList: ArrayList<Ingrediente>? = if (json != null) gson.fromJson(json, listType) else null
+        mutableStateListOf<Ingrediente>().apply {
+            if (savedList != null) addAll(savedList)
+        }
+    }
+
+    // Función auxiliar para guardar automáticamente la lista
+    fun guardarIngredientes() {
+        val json = gson.toJson(listaIngredientes.toList())
+        sharedPreferences.edit().putString("lista_ingredientes", json).apply()
+    }
 
     Column(
         modifier = Modifier
@@ -148,9 +169,12 @@ fun RetroMermasApp() {
                     }
                 }
 
-                // Cambio dinámico de pantalla según sección (pasando la lista a mermas)
+                // Cambio dinámico de pantalla según sección
                 when (seccionActual) {
-                    Seccion.MERMAS -> IngredientesFormularioRetro(listaIngredientes = listaIngredientes)
+                    Seccion.MERMAS -> IngredientesFormularioRetro(
+                        listaIngredientes = listaIngredientes,
+                        onGuardarCambios = { guardarIngredientes() }
+                    )
                     else -> SeccionEnConstruccion(seccion = seccionActual)
                 }
             }
@@ -200,7 +224,10 @@ fun SeccionEnConstruccion(seccion: Seccion) {
 }
 
 @Composable
-fun IngredientesFormularioRetro(listaIngredientes: MutableList<Ingrediente>) {
+fun IngredientesFormularioRetro(
+    listaIngredientes: MutableList<Ingrediente>,
+    onGuardarCambios: () -> Unit
+) {
     var nombre by remember { mutableStateOf("") }
     var costo by remember { mutableStateOf("") }
     var pesoBruto by remember { mutableStateOf("") }
@@ -447,6 +474,7 @@ fun IngredientesFormularioRetro(listaIngredientes: MutableList<Ingrediente>) {
                                         analisisResumen = analisisTextoCalculado
                                     )
                                 )
+                                onGuardarCambios()
 
                                 nombre = ""
                                 costo = ""
@@ -506,7 +534,10 @@ fun IngredientesFormularioRetro(listaIngredientes: MutableList<Ingrediente>) {
                             )
                         }
 
-                        IconButton(onClick = { listaIngredientes.remove(ing) }) {
+                        IconButton(onClick = {
+                            listaIngredientes.remove(ing)
+                            onGuardarCambios()
+                        }) {
                             Text("🗑️", fontSize = 16.sp)
                         }
                     }
