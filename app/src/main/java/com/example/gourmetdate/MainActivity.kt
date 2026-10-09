@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -292,7 +293,820 @@ fun RetroMermasApp() {
 }
 
 // =====================================================================
-// MÓDULO ESCRITORIO PRINCIPAL (RÉPLICA EXACTA DE LAS 3 IMÁGENES)
+// MÓDULO INGREDIENTES & MERMAS (CON DESPLIEGUE DE ANÁLISIS)
+// =====================================================================
+
+@Composable
+fun IngredientesFormularioRetro(
+    listaIngredientes: MutableList<Ingrediente>,
+    onGuardarCambios: () -> Unit
+) {
+    var nombre by remember { mutableStateOf("") }
+    var costo by remember { mutableStateOf("") }
+    var pesoBruto by remember { mutableStateOf("") }
+    var pesoNeto by remember { mutableStateOf("") }
+
+    val unidades = listOf("kg", "g", "lb", "oz", "ml")
+    var unidadSeleccionada by remember { mutableStateOf("kg") }
+    var menuUnidadesExpandido by remember { mutableStateOf(false) }
+
+    var rendimientoCalculado by remember { mutableStateOf<Double?>(null) }
+    var costoRealCalculado by remember { mutableStateOf<Double?>(null) }
+    var analisisTextoCalculado by remember { mutableStateOf("") }
+    var mensajeError by remember { mutableStateOf("") }
+
+    // ID del insumo expandido en la lista
+    var insumoExpandidoId by remember { mutableStateOf<String?>(null) }
+
+    fun formatearCosto() {
+        val valor = costo.toDoubleOrNull()
+        if (valor != null) {
+            costo = String.format(Locale.US, "%.2f", valor)
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text(
+                text = "🥑 Ingredientes & Mermas",
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
+                )
+            )
+        }
+
+        if (listaIngredientes.isNotEmpty()) {
+            item {
+                val promedioRendimiento = listaIngredientes.map { it.rendimiento }.average()
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset(x = (-2).dp, y = (-2).dp)
+                            .background(Color(0xFFE0E7FF), shape = RoundedCornerShape(8.dp))
+                            .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Total Insumos", fontSize = 11.sp, color = Color.DarkGray)
+                            Text("${listaIngredientes.size}", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Rendimiento Promedio", fontSize = 11.sp, color = Color.DarkGray)
+                            Text(
+                                String.format(Locale.US, "%.1f%%", promedioRendimiento),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Color(0xFF6B21A8)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            RetroInputField(
+                label = "Nombre del ingrediente (ej. Aguacate)",
+                value = nombre,
+                onValueChange = { nombre = it },
+                placeholderText = "(ej. Aguacate)"
+            )
+        }
+
+        item {
+            RetroInputField(
+                label = "Costo total de compra ($)",
+                value = costo,
+                onValueChange = { costo = it },
+                placeholderText = "Costo total de compra ($)",
+                keyboardType = KeyboardType.Number,
+                onFocusLost = { formatearCosto() }
+            )
+        }
+
+        item {
+            Column {
+                Text(
+                    text = "Peso Bruto (con cáscara/empaque)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(modifier = Modifier.weight(1.8f)) {
+                        RetroTextFieldRaw(
+                            value = pesoBruto,
+                            onValueChange = { pesoBruto = it },
+                            placeholderText = "Peso Bruto (con cáscara/empaque)",
+                            keyboardType = KeyboardType.Number
+                        )
+                    }
+
+                    Box(modifier = Modifier.weight(1f)) {
+                        RetroButtonSmall(
+                            text = "Unidad: $unidadSeleccionada",
+                            onClick = { menuUnidadesExpandido = true }
+                        )
+                        DropdownMenu(
+                            expanded = menuUnidadesExpandido,
+                            onDismissRequest = { menuUnidadesExpandido = false }
+                        ) {
+                            unidades.forEach { u ->
+                                DropdownMenuItem(
+                                    text = { Text(u) },
+                                    onClick = {
+                                        unidadSeleccionada = u
+                                        menuUnidadesExpandido = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            RetroInputField(
+                label = "Peso Neto (solo lo utilizable)",
+                value = pesoNeto,
+                onValueChange = { pesoNeto = it },
+                placeholderText = "Peso Neto (solo lo utilizable)",
+                keyboardType = KeyboardType.Number
+            )
+        }
+
+        item {
+            RetroButton(
+                text = "Calcular Rendimiento",
+                onClick = {
+                    formatearCosto()
+                    val c = costo.toDoubleOrNull() ?: 0.0
+                    val pb = pesoBruto.toDoubleOrNull() ?: 0.0
+                    val pn = pesoNeto.toDoubleOrNull() ?: 0.0
+
+                    if (pb > 0 && pn > 0 && pn <= pb) {
+                        val rend = (pn / pb) * 100
+                        val cReal = c / pn
+                        val mermaPeso = pb - pn
+                        val porcentajeMerma = 100.0 - rend
+                        val costoInicial = c / pb
+
+                        rendimientoCalculado = rend
+                        costoRealCalculado = cReal
+
+                        analisisTextoCalculado = String.format(
+                            Locale.US,
+                            "💡 Análisis: Desperdicias %.2f %s de merma (%.1f%%). Tu costo sube de $%.2f a $%.2f por %s utilizable.",
+                            mermaPeso, unidadSeleccionada, porcentajeMerma, costoInicial, cReal, unidadSeleccionada
+                        )
+                        mensajeError = ""
+                    } else {
+                        mensajeError = "P. Neto debe ser menor o igual a P. Bruto."
+                        rendimientoCalculado = null
+                        costoRealCalculado = null
+                        analisisTextoCalculado = ""
+                    }
+                },
+                backgroundColor = Color(0xFF6B21A8)
+            )
+        }
+
+        if (mensajeError.isNotEmpty()) {
+            item {
+                Text(text = mensajeError, color = Color.Red, fontSize = 12.sp)
+            }
+        }
+
+        if (rendimientoCalculado != null && costoRealCalculado != null) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset(x = (-2).dp, y = (-2).dp)
+                            .background(Color(0xFFFEF3C7), shape = RoundedCornerShape(8.dp))
+                            .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            text = "Resultado: ${if (nombre.isEmpty()) "Ingrediente" else nombre}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "Rendimiento: ${String.format(Locale.US, "%.1f%%", rendimientoCalculado)}",
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "Costo Real: $${String.format(Locale.US, "%.2f", costoRealCalculado)} / $unidadSeleccionada",
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF6B21A8),
+                            fontSize = 14.sp
+                        )
+                        if (analisisTextoCalculado.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(text = analisisTextoCalculado, fontSize = 12.sp, color = Color.DarkGray)
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        RetroButtonSmall(
+                            text = "Guardar Insumo",
+                            onClick = {
+                                val cVal = costo.toDoubleOrNull() ?: 0.0
+                                val pbVal = pesoBruto.toDoubleOrNull() ?: 0.0
+                                val pnVal = pesoNeto.toDoubleOrNull() ?: 0.0
+                                val nom = if (nombre.isBlank()) "Ingrediente ${listaIngredientes.size + 1}" else nombre
+
+                                listaIngredientes.add(
+                                    Ingrediente(
+                                        nombre = nom,
+                                        costo = cVal,
+                                        pesoBruto = pbVal,
+                                        pesoNeto = pnVal,
+                                        unidad = unidadSeleccionada,
+                                        rendimiento = rendimientoCalculado!!,
+                                        costoReal = costoRealCalculado!!,
+                                        analisisResumen = analisisTextoCalculado
+                                    )
+                                )
+                                onGuardarCambios()
+
+                                nombre = ""
+                                costo = ""
+                                pesoBruto = ""
+                                pesoNeto = ""
+                                rendimientoCalculado = null
+                                costoRealCalculado = null
+                                analisisTextoCalculado = ""
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        if (listaIngredientes.isNotEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(Color.Black)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Mis Insumos Registrados (Toca para ver el análisis)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = Color.Black
+                )
+            }
+
+            items(listaIngredientes, key = { it.id }) { ing ->
+                val estaExpandido = insumoExpandidoId == ing.id
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black, shape = RoundedCornerShape(8.dp))
+                        .clickable {
+                            insumoExpandidoId = if (estaExpandido) null else ing.id
+                        }
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset(x = (-2).dp, y = (-2).dp)
+                            .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
+                            .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(ing.nombre, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(if (estaExpandido) "▲" else "▼", fontSize = 10.sp, color = Color.Gray)
+                                }
+                                Text("Rendimiento: ${String.format(Locale.US, "%.1f%%", ing.rendimiento)}", fontSize = 12.sp)
+                                Text(
+                                    "Costo Real: $${String.format(Locale.US, "%.2f", ing.costoReal)} / ${ing.unidad}",
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF6B21A8),
+                                    fontSize = 12.sp
+                                )
+                            }
+
+                            IconButton(onClick = {
+                                listaIngredientes.remove(ing)
+                                onGuardarCambios()
+                            }) {
+                                Text("🗑️", fontSize = 16.sp)
+                            }
+                        }
+
+                        // DESPLIEGUE DEL ANÁLISIS DE MERMAS AL HACER CLIC
+                        AnimatedVisibility(visible = estaExpandido) {
+                            Column(
+                                modifier = Modifier
+                                    .padding(top = 10.dp)
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFFEF3C7), shape = RoundedCornerShape(6.dp))
+                                    .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
+                                    .padding(10.dp)
+                            ) {
+                                Text("🔍 Resumen de Mermas & Costo", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("• Costo Compra Inicial: $${String.format(Locale.US, "%.2f", ing.costo)}", fontSize = 11.sp)
+                                Text("• Peso Bruto: ${ing.pesoBruto} ${ing.unidad} | Peso Neto Utilizable: ${ing.pesoNeto} ${ing.unidad}", fontSize = 11.sp)
+                                val mermaCant = ing.pesoBruto - ing.pesoNeto
+                                val pctMerma = 100.0 - ing.rendimiento
+                                Text("• Merma Total: ${String.format(Locale.US, "%.2f", mermaCant)} ${ing.unidad} (${String.format(Locale.US, "%.1f%%", pctMerma)})", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
+                                if (ing.analisisResumen.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(ing.analisisResumen, fontSize = 11.sp, color = Color.DarkGray)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// =====================================================================
+// MÓDULO DE GESTIÓN DE RECETAS (CON DESPLIEGUE DE DETALLE COMPLETO)
+// =====================================================================
+
+@Composable
+fun RecetasFormularioRetro(
+    listaIngredientes: List<Ingrediente>,
+    listaRecetas: MutableList<Receta>,
+    onGuardarRecetas: () -> Unit
+) {
+    var nombreReceta by remember { mutableStateOf("") }
+    var categoria by remember { mutableStateOf("") }
+    var porciones by remember { mutableStateOf("4") }
+    var tiempo by remember { mutableStateOf("30") }
+    var descripcion by remember { mutableStateOf("") }
+
+    val ingredientesAgregados = remember { mutableStateListOf<IngredienteReceta>() }
+    var ingredienteSeleccionado by remember { mutableStateOf<Ingrediente?>(null) }
+    var menuIngredientesExpandido by remember { mutableStateOf(false) }
+    var cantidadIngrediente by remember { mutableStateOf("1") }
+
+    var busquedaNombre by remember { mutableStateOf("") }
+
+    // ID de la receta expandida
+    var recetaExpandidaId by remember { mutableStateOf<String?>(null) }
+
+    val costoTotalReceta = ingredientesAgregados.sumOf { it.costoCalculado }
+    val numPorciones = porciones.toIntOrNull() ?: 1
+    val costoPorPorcion = if (numPorciones > 0) costoTotalReceta / numPorciones else 0.0
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text(
+                text = "Nueva receta",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = Color.Black
+            )
+        }
+
+        item {
+            RetroInputField(
+                label = "Nombre de la receta",
+                value = nombreReceta,
+                onValueChange = { nombreReceta = it },
+                placeholderText = "ej. Guacamole de la casa"
+            )
+        }
+
+        item {
+            RetroInputField(
+                label = "Categoría",
+                value = categoria,
+                onValueChange = { categoria = it },
+                placeholderText = "ej. Entradas"
+            )
+        }
+
+        item {
+            RetroInputField(
+                label = "Porciones",
+                value = porciones,
+                onValueChange = { porciones = it },
+                placeholderText = "4",
+                keyboardType = KeyboardType.Number
+            )
+        }
+
+        item {
+            RetroInputField(
+                label = "Tiempo (min)",
+                value = tiempo,
+                onValueChange = { tiempo = it },
+                placeholderText = "30",
+                keyboardType = KeyboardType.Number
+            )
+        }
+
+        item {
+            Column {
+                Text(
+                    text = "Descripción / preparación",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .background(Color.Black, shape = RoundedCornerShape(6.dp))
+                ) {
+                    OutlinedTextField(
+                        value = descripcion,
+                        onValueChange = { descripcion = it },
+                        placeholder = { Text("Describe el procedimiento de la receta...", color = Color.Gray, fontSize = 13.sp) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color.Black,
+                            unfocusedBorderColor = Color.Black
+                        ),
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .offset(x = (-2).dp, y = (-2).dp)
+                            .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(6.dp))
+                    )
+                }
+            }
+        }
+
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black, shape = RoundedCornerShape(8.dp))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
+                        .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Ingredientes de la receta",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+
+                    Text(text = "Ingrediente", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        RetroButtonSmall(
+                            text = ingredienteSeleccionado?.nombre ?: "Selecciona...",
+                            onClick = { menuIngredientesExpandido = true }
+                        )
+                        DropdownMenu(
+                            expanded = menuIngredientesExpandido,
+                            onDismissRequest = { menuIngredientesExpandido = false }
+                        ) {
+                            if (listaIngredientes.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("No hay insumos. Regístralos en MERMAS.") },
+                                    onClick = { menuIngredientesExpandido = false }
+                                )
+                            } else {
+                                listaIngredientes.forEach { ing ->
+                                    DropdownMenuItem(
+                                        text = { Text("${ing.nombre} ($${String.format(Locale.US, "%.2f", ing.costoReal)}/${ing.unidad})") },
+                                        onClick = {
+                                            ingredienteSeleccionado = ing
+                                            menuIngredientesExpandido = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    RetroInputField(
+                        label = "Cantidad",
+                        value = cantidadIngrediente,
+                        onValueChange = { cantidadIngrediente = it },
+                        placeholderText = "1",
+                        keyboardType = KeyboardType.Number
+                    )
+
+                    RetroButton(
+                        text = "Añadir",
+                        onClick = {
+                            val ing = ingredienteSeleccionado
+                            val cant = cantidadIngrediente.toDoubleOrNull() ?: 0.0
+                            if (ing != null && cant > 0) {
+                                val costoCalc = cant * ing.costoReal
+                                ingredientesAgregados.add(
+                                    IngredienteReceta(
+                                        ingredienteId = ing.id,
+                                        nombre = ing.nombre,
+                                        cantidad = cant,
+                                        unidad = ing.unidad,
+                                        costoCalculado = costoCalc
+                                    )
+                                )
+                                ingredienteSeleccionado = null
+                                cantidadIngrediente = "1"
+                            }
+                        },
+                        backgroundColor = Color(0xFFFACC15)
+                    )
+
+                    if (ingredientesAgregados.isEmpty()) {
+                        Text(
+                            text = "Añade al menos un ingrediente para guardar la receta.",
+                            fontSize = 11.sp,
+                            color = Color.Gray
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(text = "Ingredientes agregados:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        ingredientesAgregados.forEach { item ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "• ${item.nombre}: ${item.cantidad} ${item.unidad} ($${String.format(Locale.US, "%.2f", item.costoCalculado)})",
+                                    fontSize = 11.sp
+                                )
+                                IconButton(
+                                    onClick = { ingredientesAgregados.remove(item) },
+                                    modifier = Modifier.size(20.dp)
+                                ) {
+                                    Text("🗑️", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (ingredientesAgregados.isNotEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset(x = (-2).dp, y = (-2).dp)
+                            .background(Color(0xFFE0E7FF), shape = RoundedCornerShape(8.dp))
+                            .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text("💡 Análisis de Costos", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Costo Total Receta: $${String.format(Locale.US, "%.2f", costoTotalReceta)}", fontSize = 12.sp)
+                        Text(
+                            "Costo Por Porción ($numPorciones): $${String.format(Locale.US, "%.2f", costoPorPorcion)}",
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF6B21A8),
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            "Precio Venta Sugerido (30% costo): $${String.format(Locale.US, "%.2f", costoPorPorcion / 0.30)}",
+                            fontSize = 11.sp,
+                            color = Color.DarkGray
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            RetroButton(
+                text = "Crear receta",
+                onClick = {
+                    if (nombreReceta.isNotBlank() && ingredientesAgregados.isNotEmpty()) {
+                        listaRecetas.add(
+                            Receta(
+                                nombre = nombreReceta,
+                                categoria = if (categoria.isBlank()) "General" else categoria,
+                                porciones = numPorciones,
+                                tiempoMinutos = tiempo.toIntOrNull() ?: 0,
+                                descripcion = descripcion,
+                                ingredientes = ingredientesAgregados.toList(),
+                                costoTotal = costoTotalReceta,
+                                costoPorPorcion = costoPorPorcion
+                            )
+                        )
+                        onGuardarRecetas()
+
+                        nombreReceta = ""
+                        categoria = ""
+                        porciones = "4"
+                        tiempo = "30"
+                        descripcion = ""
+                        ingredientesAgregados.clear()
+                    }
+                },
+                backgroundColor = Color(0xFF6B21A8)
+            )
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(12.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black, shape = RoundedCornerShape(8.dp))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
+                        .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0072C6), shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Recetario (${listaRecetas.size})",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(8.dp).background(Color.White, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color.LightGray, RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFE81123), RoundedCornerShape(50)))
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        RetroInputField(
+                            label = "Buscar por nombre",
+                            value = busquedaNombre,
+                            onValueChange = { busquedaNombre = it },
+                            placeholderText = "ej. Guacamole"
+                        )
+
+                        val recetasFiltradas = listaRecetas.filter {
+                            it.nombre.contains(busquedaNombre, ignoreCase = true)
+                        }
+
+                        if (recetasFiltradas.isEmpty()) {
+                            Text(
+                                text = "Todavía no hay recetas. Crea la primera con el formulario de arriba.",
+                                fontSize = 12.sp,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        } else {
+                            recetasFiltradas.forEach { rec ->
+                                val estaExpandida = recetaExpandidaId == rec.id
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color.Black, shape = RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            recetaExpandidaId = if (estaExpandida) null else rec.id
+                                        }
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .offset(x = (-2).dp, y = (-2).dp)
+                                            .background(Color(0xFFFEF3C7), shape = RoundedCornerShape(6.dp))
+                                            .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
+                                            .padding(10.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(rec.nombre, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(if (estaExpandida) "▲" else "▼", fontSize = 10.sp, color = Color.Gray)
+                                                }
+                                                Text("Categoría: ${rec.categoria} | ${rec.porciones} porciones | ${rec.tiempoMinutos} min", fontSize = 11.sp, color = Color.DarkGray)
+                                                Text(
+                                                    "Costo Total: $${String.format(Locale.US, "%.2f", rec.costoTotal)} ($${String.format(Locale.US, "%.2f", rec.costoPorPorcion)}/porción)",
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF6B21A8),
+                                                    fontSize = 11.sp
+                                                )
+                                            }
+                                            IconButton(onClick = {
+                                                listaRecetas.remove(rec)
+                                                onGuardarRecetas()
+                                            }) {
+                                                Text("🗑️", fontSize = 14.sp)
+                                            }
+                                        }
+
+                                        // DESPLIEGUE CON INFORMACIÓN COMPLETA DE LA RECETA
+                                        AnimatedVisibility(visible = estaExpandida) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .padding(top = 10.dp)
+                                                    .fillMaxWidth()
+                                                    .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(6.dp))
+                                                    .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
+                                                    .padding(10.dp),
+                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text("📄 Información de la Receta", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF0072C6))
+                                                Text("• Porciones: ${rec.porciones} personas", fontSize = 11.sp)
+                                                Text("• Tiempo de Preparación: ${rec.tiempoMinutos} minutos", fontSize = 11.sp)
+
+                                                if (rec.descripcion.isNotBlank()) {
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    Text("📝 Preparación / Descripción:", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                                    Text(rec.descripcion, fontSize = 11.sp, color = Color.DarkGray)
+                                                }
+
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text("🥗 Ingredientes (${rec.ingredientes.size}):", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                                rec.ingredientes.forEach { ingRec ->
+                                                    Text(
+                                                        "  - ${ingRec.nombre}: ${ingRec.cantidad} ${ingRec.unidad} ($${String.format(Locale.US, "%.2f", ingRec.costoCalculado)})",
+                                                        fontSize = 11.sp,
+                                                        color = Color.Black
+                                                    )
+                                                }
+
+                                                Divider(color = Color.LightGray, thickness = 1.dp, modifier = Modifier.padding(vertical = 4.dp))
+                                                Text("💰 Costo Por Porción: $${String.format(Locale.US, "%.2f", rec.costoPorPorcion)}", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF6B21A8))
+                                                Text("💵 Venta Sugerida (30% costo): $${String.format(Locale.US, "%.2f", rec.costoPorPorcion / 0.30)}", fontSize = 11.sp, color = Color(0xFF16A34A), fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// =====================================================================
+// ESCRITORIO PRINCIPAL
 // =====================================================================
 
 @Composable
@@ -311,7 +1125,6 @@ fun EscritorioPrincipalRetro(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // --- VENTANA 1: PANEL DE CONTROL ---
         item {
             Box(
                 modifier = Modifier
@@ -327,7 +1140,6 @@ fun EscritorioPrincipalRetro(
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Encabezado
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -348,7 +1160,6 @@ fun EscritorioPrincipalRetro(
                         }
                     }
 
-                    // Línea divisoria punteada
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -368,7 +1179,6 @@ fun EscritorioPrincipalRetro(
                             }
                     )
 
-                    // Métricas Grid (2x2)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -401,7 +1211,6 @@ fun EscritorioPrincipalRetro(
                         )
                     }
 
-                    // Acciones Rápidas
                     Text(
                         text = "ACCIONES RÁPIDAS",
                         fontSize = 11.sp,
@@ -441,7 +1250,6 @@ fun EscritorioPrincipalRetro(
             }
         }
 
-        // --- VENTANA 2: CARPETAS DEL SISTEMA ---
         item {
             Box(
                 modifier = Modifier
@@ -455,7 +1263,6 @@ fun EscritorioPrincipalRetro(
                         .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
                         .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
                 ) {
-                    // Header Azul
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -530,7 +1337,6 @@ fun EscritorioPrincipalRetro(
             }
         }
 
-        // --- VENTANA 3: ACTIVIDAD RECIENTE ---
         item {
             Box(
                 modifier = Modifier
@@ -544,7 +1350,6 @@ fun EscritorioPrincipalRetro(
                         .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
                         .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
                 ) {
-                    // Header Azul
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -632,123 +1437,8 @@ fun EscritorioPrincipalRetro(
     }
 }
 
-// --- SUB-COMPONENTES ESCRITORIO ---
-
-@Composable
-fun MetricCard(count: Int, label: String, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .height(80.dp)
-            .background(Color.Black, shape = RoundedCornerShape(6.dp))
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .offset(x = (-2).dp, y = (-2).dp)
-                .background(Color(0xFFF3EFE0), shape = RoundedCornerShape(6.dp))
-                .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
-                .padding(10.dp),
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = "$count",
-                fontWeight = FontWeight.Bold,
-                fontSize = 22.sp,
-                color = Color.Black
-            )
-            Text(
-                text = label,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF555555),
-                fontFamily = FontFamily.Monospace
-            )
-        }
-    }
-}
-
-@Composable
-fun QuickActionButton(
-    colorSquare: Color,
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .height(42.dp)
-            .background(Color.Black, shape = RoundedCornerShape(6.dp))
-            .clickable(onClick = onClick)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .offset(x = (-2).dp, y = (-2).dp)
-                .background(Color(0xFFE5E7EB), shape = RoundedCornerShape(6.dp))
-                .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .background(colorSquare)
-                    .border(1.dp, Color.Black)
-            )
-            Text(
-                text = label,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.Black
-            )
-        }
-    }
-}
-
-@Composable
-fun SystemFolderCard(
-    folderColor: Color,
-    title: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .height(95.dp)
-            .background(Color.Black, shape = RoundedCornerShape(6.dp))
-            .clickable(onClick = onClick)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .offset(x = (-2).dp, y = (-2).dp)
-                .background(Color(0xFFF3EFE0), shape = RoundedCornerShape(6.dp))
-                .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp)),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .width(42.dp)
-                    .height(28.dp)
-                    .background(folderColor, shape = RoundedCornerShape(2.dp))
-                    .border(1.dp, Color.Black, shape = RoundedCornerShape(2.dp))
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = title,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.Black,
-                fontFamily = FontFamily.Monospace
-            )
-        }
-    }
-}
-
 // =====================================================================
-// OTROS MÓDULOS (ÓRDENES, PROVEEDORES, CATÁLOGO, RECETAS, MERMAS)
+// OTROS MÓDULOS (ÓRDENES, PROVEEDORES, CATÁLOGO)
 // =====================================================================
 
 @Composable
@@ -1765,721 +2455,122 @@ fun CatalogoIngredientesRetro(
     }
 }
 
-@Composable
-fun RecetasFormularioRetro(
-    listaIngredientes: List<Ingrediente>,
-    listaRecetas: MutableList<Receta>,
-    onGuardarRecetas: () -> Unit
-) {
-    var nombreReceta by remember { mutableStateOf("") }
-    var categoria by remember { mutableStateOf("") }
-    var porciones by remember { mutableStateOf("4") }
-    var tiempo by remember { mutableStateOf("30") }
-    var descripcion by remember { mutableStateOf("") }
-
-    val ingredientesAgregados = remember { mutableStateListOf<IngredienteReceta>() }
-    var ingredienteSeleccionado by remember { mutableStateOf<Ingrediente?>(null) }
-    var menuIngredientesExpandido by remember { mutableStateOf(false) }
-    var cantidadIngrediente by remember { mutableStateOf("1") }
-
-    var busquedaNombre by remember { mutableStateOf("") }
-
-    val costoTotalReceta = ingredientesAgregados.sumOf { it.costoCalculado }
-    val numPorciones = porciones.toIntOrNull() ?: 1
-    val costoPorPorcion = if (numPorciones > 0) costoTotalReceta / numPorciones else 0.0
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Text(
-                text = "Nueva receta",
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                color = Color.Black
-            )
-        }
-
-        item {
-            RetroInputField(
-                label = "Nombre de la receta",
-                value = nombreReceta,
-                onValueChange = { nombreReceta = it },
-                placeholderText = "ej. Guacamole de la casa"
-            )
-        }
-
-        item {
-            RetroInputField(
-                label = "Categoría",
-                value = categoria,
-                onValueChange = { categoria = it },
-                placeholderText = "ej. Entradas"
-            )
-        }
-
-        item {
-            RetroInputField(
-                label = "Porciones",
-                value = porciones,
-                onValueChange = { porciones = it },
-                placeholderText = "4",
-                keyboardType = KeyboardType.Number
-            )
-        }
-
-        item {
-            RetroInputField(
-                label = "Tiempo (min)",
-                value = tiempo,
-                onValueChange = { tiempo = it },
-                placeholderText = "30",
-                keyboardType = KeyboardType.Number
-            )
-        }
-
-        item {
-            Column {
-                Text(
-                    text = "Descripción / preparación",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Black,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(100.dp)
-                        .background(Color.Black, shape = RoundedCornerShape(6.dp))
-                ) {
-                    OutlinedTextField(
-                        value = descripcion,
-                        onValueChange = { descripcion = it },
-                        placeholder = { Text("Describe el procedimiento de la receta...", color = Color.Gray, fontSize = 13.sp) },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color.Black,
-                            unfocusedBorderColor = Color.Black
-                        ),
-                        shape = RoundedCornerShape(6.dp),
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .offset(x = (-2).dp, y = (-2).dp)
-                            .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(6.dp))
-                    )
-                }
-            }
-        }
-
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.Black, shape = RoundedCornerShape(8.dp))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .offset(x = (-2).dp, y = (-2).dp)
-                        .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
-                        .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "Ingredientes de la receta",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
-
-                    Text(text = "Ingrediente", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        RetroButtonSmall(
-                            text = ingredienteSeleccionado?.nombre ?: "Selecciona...",
-                            onClick = { menuIngredientesExpandido = true }
-                        )
-                        DropdownMenu(
-                            expanded = menuIngredientesExpandido,
-                            onDismissRequest = { menuIngredientesExpandido = false }
-                        ) {
-                            if (listaIngredientes.isEmpty()) {
-                                DropdownMenuItem(
-                                    text = { Text("No hay insumos. Regístralos en MERMAS.") },
-                                    onClick = { menuIngredientesExpandido = false }
-                                )
-                            } else {
-                                listaIngredientes.forEach { ing ->
-                                    DropdownMenuItem(
-                                        text = { Text("${ing.nombre} ($${String.format(Locale.US, "%.2f", ing.costoReal)}/${ing.unidad})") },
-                                        onClick = {
-                                            ingredienteSeleccionado = ing
-                                            menuIngredientesExpandido = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    RetroInputField(
-                        label = "Cantidad",
-                        value = cantidadIngrediente,
-                        onValueChange = { cantidadIngrediente = it },
-                        placeholderText = "1",
-                        keyboardType = KeyboardType.Number
-                    )
-
-                    RetroButton(
-                        text = "Añadir",
-                        onClick = {
-                            val ing = ingredienteSeleccionado
-                            val cant = cantidadIngrediente.toDoubleOrNull() ?: 0.0
-                            if (ing != null && cant > 0) {
-                                val costoCalc = cant * ing.costoReal
-                                ingredientesAgregados.add(
-                                    IngredienteReceta(
-                                        ingredienteId = ing.id,
-                                        nombre = ing.nombre,
-                                        cantidad = cant,
-                                        unidad = ing.unidad,
-                                        costoCalculado = costoCalc
-                                    )
-                                )
-                                ingredienteSeleccionado = null
-                                cantidadIngrediente = "1"
-                            }
-                        },
-                        backgroundColor = Color(0xFFFACC15)
-                    )
-
-                    if (ingredientesAgregados.isEmpty()) {
-                        Text(
-                            text = "Añade al menos un ingrediente para guardar la receta.",
-                            fontSize = 11.sp,
-                            color = Color.Gray
-                        )
-                    } else {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = "Ingredientes agregados:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        ingredientesAgregados.forEach { item ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    "• ${item.nombre}: ${item.cantidad} ${item.unidad} ($${String.format(Locale.US, "%.2f", item.costoCalculado)})",
-                                    fontSize = 11.sp
-                                )
-                                IconButton(
-                                    onClick = { ingredientesAgregados.remove(item) },
-                                    modifier = Modifier.size(20.dp)
-                                ) {
-                                    Text("🗑️", fontSize = 12.sp)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (ingredientesAgregados.isNotEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.Black, shape = RoundedCornerShape(8.dp))
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .offset(x = (-2).dp, y = (-2).dp)
-                            .background(Color(0xFFE0E7FF), shape = RoundedCornerShape(8.dp))
-                            .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
-                            .padding(12.dp)
-                    ) {
-                        Text("💡 Análisis de Costos", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Text("Costo Total Receta: $${String.format(Locale.US, "%.2f", costoTotalReceta)}", fontSize = 12.sp)
-                        Text(
-                            "Costo Por Porción ($numPorciones): $${String.format(Locale.US, "%.2f", costoPorPorcion)}",
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF6B21A8),
-                            fontSize = 13.sp
-                        )
-                        Text(
-                            "Precio Venta Sugerido (30% costo): $${String.format(Locale.US, "%.2f", costoPorPorcion / 0.30)}",
-                            fontSize = 11.sp,
-                            color = Color.DarkGray
-                        )
-                    }
-                }
-            }
-        }
-
-        item {
-            RetroButton(
-                text = "Crear receta",
-                onClick = {
-                    if (nombreReceta.isNotBlank() && ingredientesAgregados.isNotEmpty()) {
-                        listaRecetas.add(
-                            Receta(
-                                nombre = nombreReceta,
-                                categoria = if (categoria.isBlank()) "General" else categoria,
-                                porciones = numPorciones,
-                                tiempoMinutos = tiempo.toIntOrNull() ?: 0,
-                                descripcion = descripcion,
-                                ingredientes = ingredientesAgregados.toList(),
-                                costoTotal = costoTotalReceta,
-                                costoPorPorcion = costoPorPorcion
-                            )
-                        )
-                        onGuardarRecetas()
-
-                        nombreReceta = ""
-                        categoria = ""
-                        porciones = "4"
-                        tiempo = "30"
-                        descripcion = ""
-                        ingredientesAgregados.clear()
-                    }
-                },
-                backgroundColor = Color(0xFF6B21A8)
-            )
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(12.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.Black, shape = RoundedCornerShape(8.dp))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .offset(x = (-2).dp, y = (-2).dp)
-                        .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
-                        .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFF0072C6), shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Recetario (${listaRecetas.size})",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Box(modifier = Modifier.size(8.dp).background(Color.White, RoundedCornerShape(50)))
-                            Box(modifier = Modifier.size(8.dp).background(Color.LightGray, RoundedCornerShape(50)))
-                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFE81123), RoundedCornerShape(50)))
-                        }
-                    }
-
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        RetroInputField(
-                            label = "Buscar por nombre",
-                            value = busquedaNombre,
-                            onValueChange = { busquedaNombre = it },
-                            placeholderText = "ej. Guacamole"
-                        )
-
-                        val recetasFiltradas = listaRecetas.filter {
-                            it.nombre.contains(busquedaNombre, ignoreCase = true)
-                        }
-
-                        if (recetasFiltradas.isEmpty()) {
-                            Text(
-                                text = "Todavía no hay recetas. Crea la primera con el formulario de arriba.",
-                                fontSize = 12.sp,
-                                color = Color.Gray,
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            )
-                        } else {
-                            recetasFiltradas.forEach { rec ->
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(Color.Black, shape = RoundedCornerShape(6.dp))
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .offset(x = (-2).dp, y = (-2).dp)
-                                            .background(Color(0xFFFEF3C7), shape = RoundedCornerShape(6.dp))
-                                            .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
-                                            .padding(10.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(rec.nombre, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                            Text("Categoría: ${rec.categoria} | ${rec.porciones} porciones", fontSize = 11.sp, color = Color.DarkGray)
-                                            Text(
-                                                "Costo Total: $${String.format(Locale.US, "%.2f", rec.costoTotal)} ($${String.format(Locale.US, "%.2f", rec.costoPorPorcion)}/porción)",
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF6B21A8),
-                                                fontSize = 11.sp
-                                            )
-                                        }
-                                        IconButton(onClick = {
-                                            listaRecetas.remove(rec)
-                                            onGuardarRecetas()
-                                        }) {
-                                            Text("🗑️", fontSize = 14.sp)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun IngredientesFormularioRetro(
-    listaIngredientes: MutableList<Ingrediente>,
-    onGuardarCambios: () -> Unit
-) {
-    var nombre by remember { mutableStateOf("") }
-    var costo by remember { mutableStateOf("") }
-    var pesoBruto by remember { mutableStateOf("") }
-    var pesoNeto by remember { mutableStateOf("") }
-
-    val unidades = listOf("kg", "g", "lb", "oz", "ml")
-    var unidadSeleccionada by remember { mutableStateOf("kg") }
-    var menuUnidadesExpandido by remember { mutableStateOf(false) }
-
-    var rendimientoCalculado by remember { mutableStateOf<Double?>(null) }
-    var costoRealCalculado by remember { mutableStateOf<Double?>(null) }
-    var analisisTextoCalculado by remember { mutableStateOf("") }
-    var mensajeError by remember { mutableStateOf("") }
-
-    fun formatearCosto() {
-        val valor = costo.toDoubleOrNull()
-        if (valor != null) {
-            costo = String.format(Locale.US, "%.2f", valor)
-        }
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Text(
-                text = "🥑 Ingredientes & Mermas",
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Black
-                )
-            )
-        }
-
-        if (listaIngredientes.isNotEmpty()) {
-            item {
-                val promedioRendimiento = listaIngredientes.map { it.rendimiento }.average()
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.Black, shape = RoundedCornerShape(8.dp))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .offset(x = (-2).dp, y = (-2).dp)
-                            .background(Color(0xFFE0E7FF), shape = RoundedCornerShape(8.dp))
-                            .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text("Total Insumos", fontSize = 11.sp, color = Color.DarkGray)
-                            Text("${listaIngredientes.size}", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("Rendimiento Promedio", fontSize = 11.sp, color = Color.DarkGray)
-                            Text(
-                                String.format(Locale.US, "%.1f%%", promedioRendimiento),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = Color(0xFF6B21A8)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            RetroInputField(
-                label = "Nombre del ingrediente (ej. Aguacate)",
-                value = nombre,
-                onValueChange = { nombre = it },
-                placeholderText = "(ej. Aguacate)"
-            )
-        }
-
-        item {
-            RetroInputField(
-                label = "Costo total de compra ($)",
-                value = costo,
-                onValueChange = { costo = it },
-                placeholderText = "Costo total de compra ($)",
-                keyboardType = KeyboardType.Number,
-                onFocusLost = { formatearCosto() }
-            )
-        }
-
-        item {
-            Column {
-                Text(
-                    text = "Peso Bruto (con cáscara/empaque)",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Black,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(modifier = Modifier.weight(1.8f)) {
-                        RetroTextFieldRaw(
-                            value = pesoBruto,
-                            onValueChange = { pesoBruto = it },
-                            placeholderText = "Peso Bruto (con cáscara/empaque)",
-                            keyboardType = KeyboardType.Number
-                        )
-                    }
-
-                    Box(modifier = Modifier.weight(1f)) {
-                        RetroButtonSmall(
-                            text = "Unidad: $unidadSeleccionada",
-                            onClick = { menuUnidadesExpandido = true }
-                        )
-                        DropdownMenu(
-                            expanded = menuUnidadesExpandido,
-                            onDismissRequest = { menuUnidadesExpandido = false }
-                        ) {
-                            unidades.forEach { u ->
-                                DropdownMenuItem(
-                                    text = { Text(u) },
-                                    onClick = {
-                                        unidadSeleccionada = u
-                                        menuUnidadesExpandido = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            RetroInputField(
-                label = "Peso Neto (solo lo utilizable)",
-                value = pesoNeto,
-                onValueChange = { pesoNeto = it },
-                placeholderText = "Peso Neto (solo lo utilizable)",
-                keyboardType = KeyboardType.Number
-            )
-        }
-
-        item {
-            RetroButton(
-                text = "Calcular Rendimiento",
-                onClick = {
-                    formatearCosto()
-                    val c = costo.toDoubleOrNull() ?: 0.0
-                    val pb = pesoBruto.toDoubleOrNull() ?: 0.0
-                    val pn = pesoNeto.toDoubleOrNull() ?: 0.0
-
-                    if (pb > 0 && pn > 0 && pn <= pb) {
-                        val rend = (pn / pb) * 100
-                        val cReal = c / pn
-                        val mermaPeso = pb - pn
-                        val porcentajeMerma = 100.0 - rend
-                        val costoInicial = c / pb
-
-                        rendimientoCalculado = rend
-                        costoRealCalculado = cReal
-
-                        analisisTextoCalculado = String.format(
-                            Locale.US,
-                            "💡 Análisis: Desperdicias %.2f %s de merma (%.1f%%). Tu costo sube de $%.2f a $%.2f por %s utilizable.",
-                            mermaPeso, unidadSeleccionada, porcentajeMerma, costoInicial, cReal, unidadSeleccionada
-                        )
-                        mensajeError = ""
-                    } else {
-                        mensajeError = "P. Neto debe ser menor o igual a P. Bruto."
-                        rendimientoCalculado = null
-                        costoRealCalculado = null
-                        analisisTextoCalculado = ""
-                    }
-                },
-                backgroundColor = Color(0xFF6B21A8)
-            )
-        }
-
-        if (mensajeError.isNotEmpty()) {
-            item {
-                Text(text = mensajeError, color = Color.Red, fontSize = 12.sp)
-            }
-        }
-
-        if (rendimientoCalculado != null && costoRealCalculado != null) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.Black, shape = RoundedCornerShape(8.dp))
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .offset(x = (-2).dp, y = (-2).dp)
-                            .background(Color(0xFFFEF3C7), shape = RoundedCornerShape(8.dp))
-                            .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
-                            .padding(12.dp)
-                    ) {
-                        Text(
-                            text = "Resultado: ${if (nombre.isEmpty()) "Ingrediente" else nombre}",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
-                        Text(
-                            text = "Rendimiento: ${String.format(Locale.US, "%.1f%%", rendimientoCalculado)}",
-                            fontSize = 13.sp
-                        )
-                        Text(
-                            text = "Costo Real: $${String.format(Locale.US, "%.2f", costoRealCalculado)} / $unidadSeleccionada",
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF6B21A8),
-                            fontSize = 14.sp
-                        )
-                        if (analisisTextoCalculado.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(text = analisisTextoCalculado, fontSize = 12.sp, color = Color.DarkGray)
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-                        RetroButtonSmall(
-                            text = "Guardar Insumo",
-                            onClick = {
-                                val cVal = costo.toDoubleOrNull() ?: 0.0
-                                val pbVal = pesoBruto.toDoubleOrNull() ?: 0.0
-                                val pnVal = pesoNeto.toDoubleOrNull() ?: 0.0
-                                val nom = if (nombre.isBlank()) "Ingrediente ${listaIngredientes.size + 1}" else nombre
-
-                                listaIngredientes.add(
-                                    Ingrediente(
-                                        nombre = nom,
-                                        costo = cVal,
-                                        pesoBruto = pbVal,
-                                        pesoNeto = pnVal,
-                                        unidad = unidadSeleccionada,
-                                        rendimiento = rendimientoCalculado!!,
-                                        costoReal = costoRealCalculado!!,
-                                        analisisResumen = analisisTextoCalculado
-                                    )
-                                )
-                                onGuardarCambios()
-
-                                nombre = ""
-                                costo = ""
-                                pesoBruto = ""
-                                pesoNeto = ""
-                                rendimientoCalculado = null
-                                costoRealCalculado = null
-                                analisisTextoCalculado = ""
-                            }
-                        )
-                    }
-                }
-            }
-        }
-
-        if (listaIngredientes.isNotEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(Color.Black)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Mis Insumos Registrados",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = Color.Black
-                )
-            }
-
-            items(listaIngredientes, key = { it.id }) { ing ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.Black, shape = RoundedCornerShape(8.dp))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .offset(x = (-2).dp, y = (-2).dp)
-                            .background(Color(0xFFFAF7F0), shape = RoundedCornerShape(8.dp))
-                            .border(1.5.dp, Color.Black, shape = RoundedCornerShape(8.dp))
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(ing.nombre, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("Rendimiento: ${String.format(Locale.US, "%.1f%%", ing.rendimiento)}", fontSize = 12.sp)
-                            Text(
-                                "Costo Real: $${String.format(Locale.US, "%.2f", ing.costoReal)} / ${ing.unidad}",
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF6B21A8),
-                                fontSize = 12.sp
-                            )
-                        }
-
-                        IconButton(onClick = {
-                            listaIngredientes.remove(ing)
-                            onGuardarCambios()
-                        }) {
-                            Text("🗑️", fontSize = 16.sp)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 // =====================================================================
 // COMPONENTES RETRO REUTILIZABLES
 // =====================================================================
+
+@Composable
+fun MetricCard(count: Int, label: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .height(80.dp)
+            .background(Color.Black, shape = RoundedCornerShape(6.dp))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset(x = (-2).dp, y = (-2).dp)
+                .background(Color(0xFFF3EFE0), shape = RoundedCornerShape(6.dp))
+                .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
+                .padding(10.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "$count",
+                fontWeight = FontWeight.Bold,
+                fontSize = 22.sp,
+                color = Color.Black
+            )
+            Text(
+                text = label,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF555555),
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
+}
+
+@Composable
+fun QuickActionButton(
+    colorSquare: Color,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(42.dp)
+            .background(Color.Black, shape = RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset(x = (-2).dp, y = (-2).dp)
+                .background(Color(0xFFE5E7EB), shape = RoundedCornerShape(6.dp))
+                .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp))
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(12.dp)
+                    .background(colorSquare)
+                    .border(1.dp, Color.Black)
+            )
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black
+            )
+        }
+    }
+}
+
+@Composable
+fun SystemFolderCard(
+    folderColor: Color,
+    title: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(95.dp)
+            .background(Color.Black, shape = RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset(x = (-2).dp, y = (-2).dp)
+                .background(Color(0xFFF3EFE0), shape = RoundedCornerShape(6.dp))
+                .border(1.dp, Color.Black, shape = RoundedCornerShape(6.dp)),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(42.dp)
+                    .height(28.dp)
+                    .background(folderColor, shape = RoundedCornerShape(2.dp))
+                    .border(1.dp, Color.Black, shape = RoundedCornerShape(2.dp))
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = title,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
+}
 
 @Composable
 fun RetroInputField(
