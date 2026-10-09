@@ -341,7 +341,7 @@ fun ProveedoresFormularioRetro(
                             value = correo,
                             onValueChange = { correo = it },
                             placeholderText = "ej. ventas@proveedor.mx",
-                            keyboardType = KeyboardType.EmailAddress
+                            keyboardType = KeyboardType.Email
                         )
 
                         RetroInputField(
@@ -1892,4 +1892,4 @@ fun DockItem(
             color = Color.Black
         )
     }
-} 
+}
